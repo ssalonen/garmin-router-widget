@@ -39,15 +39,11 @@ None of these are fixable from the phone side. The solution must bypass the stan
 
 ---
 
-## Immediate Non-Code Fixes
+## Why All Sync-Based Approaches Are Unreliable
 
-**1. Configure WiFi on the Edge 530** (`Settings → Wi-Fi → Add network`).
+WiFi sync, BLE sync, and Strava's Courses API integration all share the same root problem: they use Garmin's sync pipeline, which requires the Garmin Connect Mobile app to be involved and the device to be in a receptive state. WiFi is faster than BLE when it works, but it is not reliably autonomous — it still depends on GCM and Garmin's servers cooperating. In practice, WiFi sync is sometimes unreliable too.
 
-When idle on a known WiFi network the device syncs over WiFi rather than BLE — significantly more reliable. Does not help mid-activity, but eliminates the most common pre-ride frustration with zero development effort.
-
-**2. Link Strava to Garmin Connect** (if you use Strava).
-
-Strava's Courses API integration pushes routes as proper `.FIT` files server-to-server. Pre-ride sync becomes fire-and-forget. Still blocked mid-activity.
+The only approach that sidesteps the sync pipeline entirely is a Connect IQ widget making its own HTTP request from the device. The widget is the primary solution, not a fallback.
 
 ---
 
