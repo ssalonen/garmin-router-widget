@@ -8,13 +8,17 @@ The Garmin Edge 530's Bluetooth sync is unreliable for route/course transfers:
 - Manual sync trigger frequently fails or stalls indefinitely
 - Trailmap (Finnish route-planning app) can push routes to Garmin Connect, but delivery to the device depends on the same unreliable BLE sync pipeline
 
-Goal: a method to get a route onto the Edge 530 reliably, with minimal friction, even mid-activity or just before starting one.
+**Existing solution tried:** [GRouteLoaderIQ](https://apps.garmin.com/en-US/apps/6b770e92-2cc6-437e-8de2-0efae208a455) — a Connect IQ widget that can download a course by ID via `Communications.makeWebRequest()`. It works sometimes but has two problems:
+1. UX is painful: user must enter a 9-digit Garmin Connect course ID digit by digit using physical buttons
+2. Reliability is still inconsistent
+
+Goal: a widget that is as reliable as GRouteLoaderIQ but with UX that doesn't require typing IDs — the device should show your recent courses and let you pick one.
 
 ---
 
 ## Root Cause Analysis
 
-The Edge 530's BLE sync uses Garmin's standard "LiveTrack / device sync" protocol via the Garmin Connect Mobile (GCM) app. This pipeline has several known failure modes:
+The Edge 530's BLE sync uses Garmin's standard device-sync protocol via the Garmin Connect Mobile (GCM) app. This pipeline has known failure modes:
 
 | Failure mode | Why it happens |
 |---|---|
@@ -22,167 +26,148 @@ The Edge 530's BLE sync uses Garmin's standard "LiveTrack / device sync" protoco
 | Sync stalls indefinitely | BLE transfer drops, GCM enters a hung state, or the device queue backs up |
 | Manual "Sync now" fails | GCM simply retries the same stalled operation |
 
-None of these are fixable from the phone side. The solution must either bypass the BLE sync pipeline entirely or initiate transfer from the device side.
+None of these are fixable from the phone side. The solution must bypass the standard BLE sync pipeline and initiate transfer from the device side — which is exactly what GRouteLoaderIQ does.
 
 ---
 
-## Solution Options
+## Immediate Non-Code Fix
 
-### A. USB File Transfer (most reliable; manual)
+**Configure WiFi on the Edge 530** (`Settings → Wi-Fi → Add network`).
 
-Copy a `.fit` course file directly to `/Garmin/Courses/` on the device via USB.
-
-- **Pros:** 100 % reliable, no BLE, no auth issues, works on any OS
-- **Cons:** Requires USB cable, not suitable just before a ride, still need to convert GPX → FIT
-
-A helper script (Python + `fitdecode`/`fit-tool`) could automate: fetch GPX from Trailmap share URL → convert to FIT → write to device. This is a good offline fallback.
-
-### B. WiFi Sync via Garmin Express
-
-Edge 530 has WiFi. When the device is on a known WiFi network and idle (not recording), it syncs with Garmin Connect over WiFi, which is far more reliable than BLE.
-
-- **Pros:** No cable, no phone, no code changes — just configure WiFi on the device
-- **Cons:** Only works when idle (same "device busy" restriction), requires home WiFi, not on-demand
-
-**Action:** Ensure the device has home WiFi configured (`Settings → Wi-Fi → Add network`). This alone may solve most day-to-day sync problems without any custom code.
-
-### C. Connect IQ Widget — "Navigate Now" (recommended for on-device reliability)
-
-A Connect IQ widget that fetches course waypoints on demand and immediately starts Garmin's built-in navigation engine via `Navigation.startNavigation()`.
-
-The widget bypasses the sync pipeline entirely: it pulls data at the moment the user needs it and hands it to the OS navigation layer.
-
-- **Pros:** Works regardless of BLE sync state, user-initiated, fast
-- **Cons:** Navigation started from widget may or may not persist if the widget is closed before an activity starts (needs testing); requires phone + internet to fetch; needs a small backend service for auth
-- **Precedent:** [GRouteLoaderIQ](https://forums.garmin.com/developer/connect-iq/f/showcase/7983/grouteloaderiq-download-course-location-files-to-your-device) demonstrates that a Connect IQ widget can download and load a course wirelessly on Edge hardware
-
-### D. Connect IQ Widget — Course Download via Backend (full solution)
-
-Extension of Option C where the backend also pushes the course to the device through Garmin Connect's "Send to Device" API, making the course available persistently (not just for the current navigation session).
-
-- **Pros:** Course is saved on device for offline use, no navigation session required
-- **Cons:** More complex backend; "Send to Device" API may require Garmin developer program enrollment
+When idle on a known WiFi network the device syncs over WiFi rather than BLE, which is significantly more reliable. This does not help mid-activity or away from home, but it eliminates the most common pre-ride sync frustration with zero development effort.
 
 ---
 
-## Recommended Approach
+## Solution: Improved Widget
 
-**Phase 1 (immediate fix, no code):** Configure WiFi on the Edge 530. This resolves the reliability issue for pre-ride syncs without any custom development.
+Build on the GRouteLoaderIQ concept but fix the UX by showing a scrollable list of your recent Garmin Connect courses instead of requiring a typed ID.
 
-**Phase 2 (widget, reliable on-demand):** Build the Connect IQ widget (Option C). This covers the cases WiFi doesn't handle — mid-activity route fetch, or when the user is away from home WiFi.
-
-**Phase 3 (optional enhancement):** Add persistent course saving if the Phase 2 widget meets all practical needs (Phase 3 may turn out unnecessary).
-
----
-
-## Architecture (Phase 2 Widget)
-
-```
-Trailmap ──(sync)──► Garmin Connect (course stored, has course ID)
-                              │
-                              │  HTTP (via device WiFi or phone proxy)
-                              ▼
-                       Backend Proxy API
-                       (handles Garmin Connect OAuth,
-                        returns course points as JSON)
-                              │
-                              │  Communications.makeWebRequest()
-                              ▼
-                     Connect IQ Widget (Edge 530)
-                       - User enters course ID (digits via buttons)
-                       - Widget fetches waypoints
-                       - Calls Navigation.startNavigation()
-                              │
-                              ▼
-                     Garmin OS navigation engine
-                     (map route shown, turn-by-turn active)
-```
-
-### Why a backend proxy is required
-
-`Communications.makeWebRequest()` on the Edge 530 makes direct HTTPS requests but does not handle session cookies or pass Garmin Connect authentication automatically. The Garmin Connect Courses API requires OAuth 2.0 with a consumer secret that must never be embedded in a device app. A small backend service holds the credentials and acts as an authenticated proxy.
-
-### Backend proxy (minimal)
-
-- Language: anything (Python/FastAPI suggested for simplicity)
-- Endpoint: `GET /course/{courseId}/points` → returns `[{lat, lon, alt}, ...]`
-- Auth: server-side OAuth2 against Garmin Connect using registered developer credentials
-- Hosting: any small VPS or serverless function (low traffic)
-
-### Widget UI
-
-Edge 530 has a 240×200 screen and five physical buttons: Up, Down, Start/Enter, Back, Lap.
+### Target UX
 
 ```
 ┌─────────────────────────┐
 │  Route Loader           │
 │                         │
-│  Course ID:             │
-│  [ 1 2 3 4 5 _ _ _ ]    │  ← cursor digit highlighted
+│ ▶ Morning Trail  12 km  │  ← most recent, highlighted
+│   Lakeside Loop   8 km  │
+│   Forest Path     5 km  │
+│   Mountain Run   20 km  │
+│   (5 more...)           │
 │                         │
-│  UP/DOWN: change digit  │
-│  START: next digit      │
-│  LAP: fetch & navigate  │
-│  BACK: cancel           │
-│                         │
-│  Status: Ready          │
+│  ↑↓ scroll              │
+│  START: navigate        │
+│  BACK: exit             │
 └─────────────────────────┘
 ```
 
-After Lap/fetch, the widget calls `Navigation.startNavigation()` with the fetched waypoints and shows a brief confirmation before the user exits the widget to start their activity.
+Opening the widget fetches your last ~10 courses from Garmin Connect and displays them by name. One button press starts navigation. No ID entry.
+
+### How the course list gets to the widget
+
+The widget cannot authenticate with Garmin Connect directly (OAuth2 consumer secret cannot be embedded in device code). Two viable paths:
+
+**Option 1 — Backend proxy (recommended)**
+
+A small server holds the Garmin Connect OAuth2 credentials. The widget calls the proxy, which returns a named course list and course points.
+
+```
+Trailmap ──(sync)──► Garmin Connect
+                           │
+                           │ HTTPS (device WiFi or BLE→phone proxy)
+                           ▼
+                     Backend Proxy
+                     • GET /courses       → [{id, name, distance}, ...]
+                     • GET /course/{id}   → [{lat, lon, alt}, ...]
+                     (holds OAuth2 credentials)
+                           │
+                           │ Communications.makeWebRequest()
+                           ▼
+                     Connect IQ Widget
+                     • Shows course list by name
+                     • User picks one
+                     • Calls Navigation.startNavigation()
+                           │
+                           ▼
+                     Garmin OS navigation engine
+```
+
+- **Pros:** All interaction stays on the device; clean UX; no phone interaction needed
+- **Cons:** Requires a publicly reachable HTTPS server; needs Garmin developer program enrollment for official OAuth credentials
+
+**Option 2 — Companion phone app**
+
+A simple phone app (Android/iOS) authenticates with Garmin Connect, fetches the course list, and pushes it to the widget over BLE via `Communications.registerForPhoneAppMessages()`.
+
+- **Pros:** No server to run; OAuth handled on phone where it's natural
+- **Cons:** Must build and maintain a phone app in addition to the widget; user must open the phone app first before opening the widget
+
+Option 1 is recommended because it gives the cleaner device-side UX and avoids building a phone app. The backend is minimal (~100 lines of Python).
+
+---
+
+## Technical Constraints (Edge 530 / Connect IQ 3.3)
+
+| Constraint | Detail |
+|---|---|
+| Cannot write course files to device storage | No Connect IQ API for `/Garmin/Courses/`; this is a hard OS restriction |
+| `makeWebRequest()` does not carry Garmin auth cookies | Requests are direct HTTPS; Garmin session is not passed automatically |
+| OAuth consumer secret cannot be in device code | Must live on the backend |
+| `makeWebRequest()` works over BLE phone proxy | Confirmed; occasional `BLE_QUEUE_FULL` at high volume — keep JSON payloads small |
+| `Navigation.startNavigation()` available in API 3.3 | Confirmed; whether navigation persists after widget exits needs physical device test |
+| 5 physical buttons | Up, Down, Start/Enter, Lap, Back — sufficient for list navigation |
 
 ---
 
 ## Implementation Plan
 
-### Step 1 — Development environment setup
+### Step 1 — Development environment
 
-- Install Connect IQ SDK (latest compatible with API 3.3)
+- Install Connect IQ SDK (latest 3.x compatible build)
 - Install Monkey C VS Code extension
-- Configure Edge 530 as target device in `manifest.xml`
-- Verify simulator runs a hello-world widget on Edge 530 profile
+- `manifest.xml` targeting `edge530`, app type `widget`
+- Confirm hello-world widget runs in Edge 530 simulator
 
 ### Step 2 — Backend proxy
 
-- Register as a Garmin developer and obtain OAuth2 consumer credentials for the Courses API
-- Implement `GET /course/{courseId}/points` endpoint
-- Return simplified JSON: `{"points": [{"lat": 60.1, "lon": 24.9, "alt": 50}, ...]}`
-- Deploy to a public HTTPS endpoint (the widget needs a stable URL)
-- Store the backend URL as a configurable app setting in the widget
+- Register for Garmin developer program (apply early; approval time unknown)
+- Implement two endpoints in Python/FastAPI:
+  - `GET /courses` → `[{"id": "123456789", "name": "Morning Trail", "distanceKm": 12.3}, ...]`
+  - `GET /course/{id}` → `{"points": [{"lat": 60.1, "lon": 24.9, "alt": 50}, ...]}`
+- OAuth2 against Garmin Connect; credentials in environment variables, never committed
+- Deploy to any small VPS or serverless host; must be public HTTPS
+- Backend URL stored as a configurable widget setting (editable via Garmin Connect Mobile settings page for the app)
 
-### Step 3 — Widget skeleton
+### Step 3 — Widget: course list
 
-- Widget app type in `manifest.xml`, target `edge530`
-- `WatchUi.WatchFace` → `WatchUi.View` with custom `onUpdate()` draw loop
-- Implement button handler (`onKey()`) for digit-entry state machine
-- Display current digit array and cursor position
+- On widget open: call `GET /courses` via `makeWebRequest()`
+- Show loading indicator during fetch
+- On response: render scrollable list with course name + distance
+- Up/Down buttons scroll the list; highlighted item tracks selection
+- Handle errors: no phone, no network, empty list, server error
 
-### Step 4 — Network fetch
+### Step 4 — Widget: load and navigate
 
-- On "fetch" button press: call `Communications.makeWebRequest()` to backend proxy with the entered course ID
-- Handle `COMMUNICATIONS_ERROR` cases: no phone, no network, bad ID
-- Show loading indicator while waiting (Edge 530 can take several seconds for a round trip)
+- On Start press with a course highlighted: call `GET /course/{id}`
+- Show loading indicator
+- On response: build `[Position.Location]` array from points
+- Call `Navigation.startNavigation(points, {})`
+- Show "Navigating: [name]" confirmation
+- User presses Back to exit widget and start their activity
 
-### Step 5 — Start navigation
+### Step 5 — Key test: navigation persistence
 
-- On successful response, build `[Position.Location]` array from returned points
-- Call `Navigation.startNavigation(points, opts)`
-- Show success message ("Route loaded — start activity")
-- Let user press Back to exit widget; navigation remains active
+Before investing further, verify on a physical Edge 530:
+- Start widget → load course → press Back → start activity
+- Does the loaded route appear on the map during the activity?
 
-### Step 6 — Trailmap course ID flow
+If yes: the widget is complete. If no: the course needs to be loaded in a different way (investigate how GRouteLoaderIQ achieves persistence — contact developer on Garmin forums or test their app carefully).
 
-Trailmap syncs routes to Garmin Connect. The course ID appears in the Garmin Connect URL:
-`https://connect.garmin.com/modern/course/123456789`
+### Step 6 — Polish
 
-The user notes the 9-digit ID from Garmin Connect (or Trailmap's Garmin sync confirmation) and enters it in the widget. Consider adding a "recent courses" list in a future iteration to avoid re-typing.
-
-### Step 7 — Testing
-
-- Test on Edge 530 simulator: digit entry, error states, loading state
-- Sideload to physical Edge 530 via Garmin Express developer mode
-- Test end-to-end: Trailmap route → Garmin Connect → widget fetch → navigation on device
-- Test the "start activity after widget navigation" flow to confirm navigation persists
+- Cache the course list locally (`Application.Storage`) with a 5-minute TTL so reopening the widget is instant
+- Show last-used course highlighted by default
+- "Refresh" option (Lap button) to force re-fetch
+- Handle the case where Trailmap's sync hasn't completed yet (course not yet on Garmin Connect) with a clear message
 
 ---
 
@@ -190,11 +175,10 @@ The user notes the 9-digit ID from Garmin Connect (or Trailmap's Garmin sync con
 
 | Question | Impact | How to resolve |
 |---|---|---|
-| Does `Navigation.startNavigation()` navigation persist after the widget is closed and an activity starts? | High — if not, the whole approach needs rethinking | Test on physical Edge 530; check GRouteLoaderIQ behavior |
-| How does GRouteLoaderIQ actually write courses to device storage (if it does)? | Medium — would enable persistent course saving (Phase 3) | Read GRouteLoaderIQ source if available; contact developer; test behavior |
-| Does `makeWebRequest()` work over BLE (phone proxy) when WiFi is unavailable? | Medium — affects field usability | Test on device with WiFi disabled |
-| Does Garmin's developer program approval take long? | Medium — blocks backend auth | Apply early; consider using a test/personal OAuth token for initial development |
-| Can Trailmap export a direct GPX download URL for a shared route? | Low — could simplify the backend (skip Garmin Connect entirely) | Check Trailmap API / share URL format |
+| Does `Navigation.startNavigation()` navigation persist after widget closes and activity starts? | **Critical** — determines if the whole approach works | Test on physical device (Step 5) |
+| How long does Garmin developer program approval take? | High — blocks OAuth credentials | Apply at once; use Garmin's unofficial/scraper API for early development if needed |
+| Does GRouteLoaderIQ persist courses (vs navigate-now only)? | Medium — informs Phase 2 design | Contact dpawlyk on Garmin forums |
+| Can Trailmap routes be fetched directly by URL without auth? | Low — would simplify backend by skipping Garmin Connect | Check Trailmap GPX export URL format |
 
 ---
 
@@ -202,18 +186,18 @@ The user notes the 9-digit ID from Garmin Connect (or Trailmap's Garmin sync con
 
 ```
 garmin-router-widget/
-├── plan.md                  ← this file
-├── widget/                  ← Connect IQ project
+├── plan.md
+├── widget/
 │   ├── manifest.xml
 │   ├── source/
-│   │   ├── App.mc           ← app entry point
-│   │   ├── MainView.mc      ← digit-entry UI
-│   │   └── CourseLoader.mc  ← web request + Navigation.startNavigation
+│   │   ├── App.mc            ← entry point
+│   │   ├── CourseListView.mc ← scrollable list UI
+│   │   └── CourseLoader.mc   ← makeWebRequest + Navigation.startNavigation
 │   └── resources/
 │       └── layouts/
 │           └── layout.xml
-└── backend/                 ← proxy service
-    ├── main.py              ← FastAPI app
+└── backend/
+    ├── main.py               ← FastAPI proxy
     ├── requirements.txt
     └── Dockerfile
 ```
