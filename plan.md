@@ -8,11 +8,20 @@ The Garmin Edge 530's Bluetooth sync is unreliable for route/course transfers:
 - Manual sync trigger frequently fails or stalls indefinitely
 - Trailmap (Finnish route-planning app) can push routes to Garmin Connect, but delivery to the device depends on the same unreliable BLE sync pipeline
 
-**Existing solution tried:** [GRouteLoaderIQ](https://apps.garmin.com/en-US/apps/6b770e92-2cc6-437e-8de2-0efae208a455) — a Connect IQ widget that can download a course by ID via `Communications.makeWebRequest()`. It works sometimes but has two problems:
-1. UX is painful: user must enter a 9-digit Garmin Connect course ID digit by digit using physical buttons
-2. Reliability is still inconsistent
+**Existing solutions and their gaps:**
 
-Goal: a widget that is as reliable as GRouteLoaderIQ but with UX that doesn't require typing IDs — the device should show your recent courses and let you pick one.
+| Approach | Pre-ride reliable? | Mid-activity? | Notes |
+|---|---|---|---|
+| Garmin BLE sync | ❌ unreliable | ❌ blocked | The broken baseline |
+| Garmin WiFi sync | ✅ reliable | ❌ blocked | Free fix; only at home |
+| Strava Courses API | ✅ reliable | ❌ blocked | Strava pushes FIT files server-to-server via Garmin's Courses API; still hits the same sync block during an activity |
+| GRouteLoaderIQ widget | ✅ (sometimes) | ✅ (sometimes) | Bypasses sync entirely; bad UX (9-digit ID entry) and inconsistent reliability |
+
+Strava's reliability comes from using Garmin's official Courses API — a server-to-server integration that pushes proper `.FIT` course files, bypassing the fragile BLE pipeline. But it still uses the native sync mechanism for the final device delivery, so it is just as blocked mid-activity as anything else.
+
+**GRouteLoaderIQ is the only tool that works mid-activity**, because it is a Connect IQ widget running on the device, not something trying to push files through the sync pipeline. The problems with it are UX (typing IDs) and intermittent `makeWebRequest()` failures.
+
+Goal: a widget with GRouteLoaderIQ's mid-activity capability, with Strava-quality UX — show a named list of your recent courses, pick one, navigate.
 
 ---
 
@@ -30,11 +39,15 @@ None of these are fixable from the phone side. The solution must bypass the stan
 
 ---
 
-## Immediate Non-Code Fix
+## Immediate Non-Code Fixes
 
-**Configure WiFi on the Edge 530** (`Settings → Wi-Fi → Add network`).
+**1. Configure WiFi on the Edge 530** (`Settings → Wi-Fi → Add network`).
 
-When idle on a known WiFi network the device syncs over WiFi rather than BLE, which is significantly more reliable. This does not help mid-activity or away from home, but it eliminates the most common pre-ride sync frustration with zero development effort.
+When idle on a known WiFi network the device syncs over WiFi rather than BLE — significantly more reliable. Does not help mid-activity, but eliminates the most common pre-ride frustration with zero development effort.
+
+**2. Link Strava to Garmin Connect** (if you use Strava).
+
+Strava's Courses API integration pushes routes as proper `.FIT` files server-to-server. Pre-ride sync becomes fire-and-forget. Still blocked mid-activity.
 
 ---
 
