@@ -57,27 +57,14 @@ function decodeBinaryPoints(bytes) {
     while (i + 8 <= n) {
         var latInt = int32FromBytesAt(bytes, i);
         var lonInt = int32FromBytesAt(bytes, i + 4);
-        result.add({
-            "lat" => latInt.toFloat() / 10000000.0,
-            "lon" => lonInt.toFloat() / 10000000.0
-        });
+        result.add(new Position.Location({
+            :latitude  => latInt.toFloat() / 10000000.0,
+            :longitude => lonInt.toFloat() / 10000000.0,
+            :format    => :degrees
+        }));
         i += 8;
     }
     return result;
-}
-
-// Convert plain {lat, lon} dicts to Position.Location objects for Navigation.
-function toLocationArray(pointDicts) {
-    var locs = [];
-    for (var i = 0; i < pointDicts.size(); i++) {
-        var p = pointDicts[i];
-        locs.add(new Position.Location({
-            :latitude  => p.get("lat"),
-            :longitude => p.get("lon"),
-            :format    => :degrees
-        }));
-    }
-    return locs;
 }
 
 // Map HTTP / BLE error codes to human-readable strings for on-screen display.

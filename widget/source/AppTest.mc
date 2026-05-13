@@ -56,18 +56,20 @@ function testDecodeBinaryPoints_twoPoints(logger) {
     _packInt32(bytes,  8, 601800000);
     _packInt32(bytes, 12, 249500000);
 
-    var pts = decodeBinaryPoints(bytes);
-    Test.assertEqual(pts.size(), 2);
+    var locs = decodeBinaryPoints(bytes);
+    Test.assertEqual(locs.size(), 2);
 
-    var d = pts[0].get("lat") - 60.1699;
+    var coords = locs[0].toDegrees();  // [lat, lon]
+    var d = coords[0] - 60.1699;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    d = pts[0].get("lon") - 24.9384;
+    d = coords[1] - 24.9384;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    d = pts[1].get("lat") - 60.1800;
+    coords = locs[1].toDegrees();
+    d = coords[0] - 60.1800;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
@@ -80,14 +82,15 @@ function testDecodeBinaryPoints_negativeCoords(logger) {
     _packInt32(bytes, 0, -338688000);
     _packInt32(bytes, 4, 1512093000);
 
-    var pts = decodeBinaryPoints(bytes);
-    Test.assertEqual(pts.size(), 1);
+    var locs = decodeBinaryPoints(bytes);
+    Test.assertEqual(locs.size(), 1);
 
-    var d = pts[0].get("lat") - (-33.8688);
+    var coords = locs[0].toDegrees();
+    var d = coords[0] - (-33.8688);
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    d = pts[0].get("lon") - 151.2093;
+    d = coords[1] - 151.2093;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
@@ -95,16 +98,14 @@ function testDecodeBinaryPoints_negativeCoords(logger) {
 
 (:test)
 function testDecodeBinaryPoints_empty(logger) {
-    var bytes = new [0]b;
-    Test.assertEqual(decodeBinaryPoints(bytes).size(), 0);
+    Test.assertEqual(decodeBinaryPoints(new [0]b).size(), 0);
     return true;
 }
 
 (:test)
 function testDecodeBinaryPoints_truncated(logger) {
     // 7 bytes — not enough for a complete 8-byte point
-    var bytes = new [7]b;
-    Test.assertEqual(decodeBinaryPoints(bytes).size(), 0);
+    Test.assertEqual(decodeBinaryPoints(new [7]b).size(), 0);
     return true;
 }
 
