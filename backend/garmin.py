@@ -56,7 +56,7 @@ def get_courses(limit: int = 10) -> list[dict]:
     ]
 
 
-def get_course_points(course_id: str, thin_m: int = 40) -> list[dict]:
+def get_course_points(course_id: str, thin_m: int = 15) -> list[dict]:
     client = _get_client()
     try:
         response = client.garth.get(
@@ -70,19 +70,20 @@ def get_course_points(course_id: str, thin_m: int = 40) -> list[dict]:
 
 
 def _parse_gpx(gpx_bytes: bytes) -> list[dict]:
+    # Only extract lat/lon — Navigation.startNavigation() has no use for elevation
+    # or timestamps, and omitting them keeps the JSON payload smaller.
     ns = {"gpx": "http://www.topografix.com/GPX/1/1"}
     root = ET.fromstring(gpx_bytes)
     points = []
     for trkpt in root.findall(".//gpx:trkpt", ns):
-        lat = float(trkpt.attrib["lat"])
-        lon = float(trkpt.attrib["lon"])
-        ele_el = trkpt.find("gpx:ele", ns)
-        alt = float(ele_el.text) if ele_el is not None else 0.0
-        points.append({"lat": lat, "lon": lon, "alt": alt})
+        points.append({
+            "lat": float(trkpt.attrib["lat"]),
+            "lon": float(trkpt.attrib["lon"]),
+        })
     return points
 
 
-def thin_points(points: list[dict], min_m: float = 40) -> list[dict]:
+def thin_points(points: list[dict], min_m: float = 15) -> list[dict]:
     if not points:
         return []
     if len(points) == 1:

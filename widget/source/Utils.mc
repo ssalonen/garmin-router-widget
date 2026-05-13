@@ -36,7 +36,8 @@ function parseCourseList(data) {
 }
 
 // Parse the /api/course/{id} JSON response into an array of {lat, lon} dicts.
-// Kept as plain dicts so it is testable without Position.Location.
+// Elevation is deliberately absent — Navigation.startNavigation() ignores it
+// and omitting it keeps the JSON payload smaller over BLE.
 function parseCoursePointDicts(data) {
     var result = [];
     if (data == null || !(data instanceof Lang.Dictionary)) {

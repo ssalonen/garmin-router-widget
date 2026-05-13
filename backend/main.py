@@ -16,7 +16,7 @@ def list_courses(limit: int = Query(default=10, le=50)):
 
 
 @app.get("/api/course/{course_id}")
-def get_course(course_id: str, thin_m: int = Query(default=40, ge=5, le=500)):
+def get_course(course_id: str, thin_m: int = Query(default=15, ge=5, le=500)):
     try:
         points = garmin.get_course_points(course_id, thin_m=thin_m)
     except Exception as e:

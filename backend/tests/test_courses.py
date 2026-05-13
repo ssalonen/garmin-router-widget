@@ -9,6 +9,7 @@ SAMPLE_GPX = b"""<?xml version="1.0" encoding="UTF-8"?>
     <trkpt lat="60.1800" lon="24.9500"><ele>25.0</ele></trkpt>
   </trkseg></trk>
 </gpx>"""
+# ele elements are present in source GPX but should NOT appear in API output
 
 
 def test_list_courses_returns_formatted_data(client, mock_garmin):
@@ -52,8 +53,16 @@ def test_get_course_returns_first_and_last_points(client, mock_garmin):
     assert data["points"][-1]["lat"] == pytest.approx(60.1800, abs=1e-4)
 
 
+def test_get_course_omits_elevation(client, mock_garmin):
+    # ele is in the GPX but Navigation.startNavigation() doesn't use it
+    mock_garmin.garth.get.return_value.content = SAMPLE_GPX
+    response = client.get("/api/course/111222333")
+    data = response.json()
+    assert "alt" not in data["points"][0]
+
+
 def test_get_course_thins_dense_points(client, mock_garmin):
-    # Second point is ~12m from first — below 40m threshold — should be removed
+    # Second point is ~12m from first — below 15m threshold — should be removed
     mock_garmin.garth.get.return_value.content = SAMPLE_GPX
     response = client.get("/api/course/111222333")
     data = response.json()
@@ -71,20 +80,20 @@ def test_get_course_garmin_error_returns_502(client, mock_garmin):
 def test_thin_points_keeps_first_and_last():
     from garmin import thin_points
     points = [
-        {"lat": 60.0001, "lon": 24.0001, "alt": 0.0},
-        {"lat": 60.0001, "lon": 24.0001, "alt": 0.0},  # same location, filtered
-        {"lat": 60.0010, "lon": 24.0010, "alt": 5.0},
+        {"lat": 60.0001, "lon": 24.0001},
+        {"lat": 60.0001, "lon": 24.0001},  # same location, filtered
+        {"lat": 60.0010, "lon": 24.0010},
     ]
-    result = thin_points(points, min_m=40)
+    result = thin_points(points, min_m=15)
     assert result[0] == points[0]
     assert result[-1] == points[-1]
 
 
 def test_thin_points_removes_close_intermediates():
     from garmin import thin_points
-    # All intermediate points within 10m of each other; only first+last survive
-    points = [{"lat": 60.0 + i * 0.00001, "lon": 24.0, "alt": 0.0} for i in range(10)]
-    result = thin_points(points, min_m=40)
+    # All intermediate points within ~11m of each other; only first+last survive
+    points = [{"lat": 60.0 + i * 0.00001, "lon": 24.0} for i in range(10)]
+    result = thin_points(points, min_m=15)
     assert result[0] == points[0]
     assert result[-1] == points[-1]
     assert len(result) == 2
@@ -93,24 +102,24 @@ def test_thin_points_removes_close_intermediates():
 def test_thin_points_keeps_distant_intermediates():
     from garmin import thin_points
     points = [
-        {"lat": 60.0000, "lon": 24.0000, "alt": 0.0},
-        {"lat": 60.0010, "lon": 24.0000, "alt": 0.0},  # ~111m away → kept
-        {"lat": 60.0020, "lon": 24.0000, "alt": 0.0},
+        {"lat": 60.0000, "lon": 24.0000},
+        {"lat": 60.0010, "lon": 24.0000},  # ~111m away → kept
+        {"lat": 60.0020, "lon": 24.0000},
     ]
-    result = thin_points(points, min_m=40)
+    result = thin_points(points, min_m=15)
     assert len(result) == 3
 
 
 def test_thin_points_single_point():
     from garmin import thin_points
-    points = [{"lat": 60.0, "lon": 24.0, "alt": 0.0}]
-    result = thin_points(points, min_m=40)
+    points = [{"lat": 60.0, "lon": 24.0}]
+    result = thin_points(points, min_m=15)
     assert result == points
 
 
 def test_thin_points_empty():
     from garmin import thin_points
-    assert thin_points([], min_m=40) == []
+    assert thin_points([], min_m=15) == []
 
 
 # --- haversine unit test ---
