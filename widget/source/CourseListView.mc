@@ -118,7 +118,7 @@ class CourseListView extends WatchUi.View {
     function onCoursePointsResponse(code, data, durationMs) {
         _lastDurationMs = durationMs;
         if (code == 200 && data != null) {
-            var pointDicts = parseCoursePointDicts(data);
+            var pointDicts = decodeBinaryPoints(data);
             if (pointDicts.size() > 0) {
                 var locs = toLocationArray(pointDicts);
                 // TODO: verify Navigation.startNavigation() signature on Edge 530 API 3.3

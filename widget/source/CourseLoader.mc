@@ -43,7 +43,7 @@ class CourseLoader {
             null,
             {
                 :method       => Communications.HTTP_REQUEST_METHOD_GET,
-                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON
+                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_BIN
             },
             method(:_onCoursePointsRaw)
         );

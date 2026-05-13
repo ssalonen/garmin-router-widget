@@ -1,10 +1,120 @@
 // Unit tests for pure utility functions in Utils.mc.
-// Run via: connectiq simulator → Run Tests, or `monkeydo --test`.
-// These tests have no dependency on hardware APIs.
+// Run via: Connect IQ simulator → Run Tests, or `monkeydo --test`.
+// No hardware API dependencies.
 
 using Toybox.Test;
 
-// ---- parseCourseList ------------------------------------------------
+// ---- Helper: pack an int32 big-endian into a ByteArray at offset --------
+// Tagged (:test) so it is excluded from production builds.
+
+(:test)
+function _packInt32(bytes, offset, val) {
+    bytes[offset]     = (val >> 24) & 0xFF;
+    bytes[offset + 1] = (val >> 16) & 0xFF;
+    bytes[offset + 2] = (val >> 8)  & 0xFF;
+    bytes[offset + 3] =  val        & 0xFF;
+}
+
+// ---- int32FromBytesAt ----------------------------------------------------
+
+(:test)
+function testInt32FromBytesAt_positive(logger) {
+    // 601699000 = round(60.1699 * 1e7)
+    var bytes = new [4]b;
+    _packInt32(bytes, 0, 601699000);
+    Test.assertEqual(int32FromBytesAt(bytes, 0), 601699000);
+    return true;
+}
+
+(:test)
+function testInt32FromBytesAt_negative(logger) {
+    // -249384000 = round(-24.9384 * 1e7)  — western longitude
+    var bytes = new [4]b;
+    _packInt32(bytes, 0, -249384000);
+    Test.assertEqual(int32FromBytesAt(bytes, 0), -249384000);
+    return true;
+}
+
+(:test)
+function testInt32FromBytesAt_offset(logger) {
+    // Byte at offset 4, not 0
+    var bytes = new [8]b;
+    bytes[0] = 0xFF; bytes[1] = 0xFF; bytes[2] = 0xFF; bytes[3] = 0xFF;
+    _packInt32(bytes, 4, 12345678);
+    Test.assertEqual(int32FromBytesAt(bytes, 4), 12345678);
+    return true;
+}
+
+// ---- decodeBinaryPoints --------------------------------------------------
+
+(:test)
+function testDecodeBinaryPoints_twoPoints(logger) {
+    // (60.1699, 24.9384) and (60.1800, 24.9500)
+    var bytes = new [16]b;
+    _packInt32(bytes,  0, 601699000);
+    _packInt32(bytes,  4, 249384000);
+    _packInt32(bytes,  8, 601800000);
+    _packInt32(bytes, 12, 249500000);
+
+    var pts = decodeBinaryPoints(bytes);
+    Test.assertEqual(pts.size(), 2);
+
+    var d = pts[0].get("lat") - 60.1699;
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+
+    d = pts[0].get("lon") - 24.9384;
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+
+    d = pts[1].get("lat") - 60.1800;
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+    return true;
+}
+
+(:test)
+function testDecodeBinaryPoints_negativeCoords(logger) {
+    // (-33.8688, 151.2093) — Sydney: negative lat, lon byte > 127
+    var bytes = new [8]b;
+    _packInt32(bytes, 0, -338688000);
+    _packInt32(bytes, 4, 1512093000);
+
+    var pts = decodeBinaryPoints(bytes);
+    Test.assertEqual(pts.size(), 1);
+
+    var d = pts[0].get("lat") - (-33.8688);
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+
+    d = pts[0].get("lon") - 151.2093;
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+    return true;
+}
+
+(:test)
+function testDecodeBinaryPoints_empty(logger) {
+    var bytes = new [0]b;
+    Test.assertEqual(decodeBinaryPoints(bytes).size(), 0);
+    return true;
+}
+
+(:test)
+function testDecodeBinaryPoints_truncated(logger) {
+    // 7 bytes — not enough for a complete 8-byte point
+    var bytes = new [7]b;
+    Test.assertEqual(decodeBinaryPoints(bytes).size(), 0);
+    return true;
+}
+
+(:test)
+function testDecodeBinaryPoints_null(logger) {
+    Test.assertEqual(decodeBinaryPoints(null).size(), 0);
+    return true;
+}
+
+// ---- parseCourseList -----------------------------------------------------
 
 (:test)
 function testParseCourseList_happyPath(logger) {
@@ -38,8 +148,8 @@ function testParseCourseList_missingKey(logger) {
 function testParseCourseList_skipsIncompleteItems(logger) {
     var data = {
         "courses" => [
-            {"id" => "123"},              // missing name → skip
-            {"name" => "No ID course"},   // missing id   → skip
+            {"id" => "123"},
+            {"name" => "No ID course"},
             {"id" => "456", "name" => "Good Course", "distanceKm" => 5.0}
         ]
     };
@@ -49,38 +159,7 @@ function testParseCourseList_skipsIncompleteItems(logger) {
     return true;
 }
 
-// ---- parseCoursePointDicts ------------------------------------------
-
-(:test)
-function testParseCoursePointDicts_happyPath(logger) {
-    var data = {
-        "points" => [
-            {"lat" => 60.1699, "lon" => 24.9384},
-            {"lat" => 60.1800, "lon" => 24.9500}
-        ]
-    };
-    var pts = parseCoursePointDicts(data);
-    Test.assertEqual(pts.size(), 2);
-    // Float equality: check within small epsilon
-    var latDiff = pts[0].get("lat") - 60.1699;
-    if (latDiff < 0) { latDiff = -latDiff; }
-    Test.assert(latDiff < 0.0001);
-    return true;
-}
-
-(:test)
-function testParseCoursePointDicts_null(logger) {
-    Test.assertEqual(parseCoursePointDicts(null).size(), 0);
-    return true;
-}
-
-(:test)
-function testParseCoursePointDicts_emptyPoints(logger) {
-    Test.assertEqual(parseCoursePointDicts({"points" => []}).size(), 0);
-    return true;
-}
-
-// ---- httpErrorString ------------------------------------------------
+// ---- httpErrorString -----------------------------------------------------
 
 (:test)
 function testHttpErrorString_knownCodes(logger) {

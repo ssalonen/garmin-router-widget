@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
 
 import garmin
 import storage
@@ -21,7 +22,10 @@ def get_course(course_id: str, thin_m: int = Query(default=15, ge=5, le=500)):
         points = garmin.get_course_points(course_id, thin_m=thin_m)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return {"points": points}
+    return Response(
+        content=garmin.encode_points_binary(points),
+        media_type="application/octet-stream",
+    )
 
 
 @app.post("/api/log")

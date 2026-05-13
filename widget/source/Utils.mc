@@ -35,25 +35,33 @@ function parseCourseList(data) {
     return result;
 }
 
-// Parse the /api/course/{id} JSON response into an array of {lat, lon} dicts.
-// Elevation is deliberately absent — Navigation.startNavigation() ignores it
-// and omitting it keeps the JSON payload smaller over BLE.
-function parseCoursePointDicts(data) {
+// Decode binary course points from /api/course/{id}.
+// Format: pairs of big-endian int32 scaled by 1e7, 8 bytes per point.
+// Relies on Monkey C Number being 32-bit signed: bytes with high bit set
+// produce negative int32 values, which is exactly what we want for
+// southern latitudes and western longitudes.
+
+function int32FromBytesAt(bytes, offset) {
+    var b0 = bytes[offset];
+    var b1 = bytes[offset + 1];
+    var b2 = bytes[offset + 2];
+    var b3 = bytes[offset + 3];
+    return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+}
+
+function decodeBinaryPoints(bytes) {
     var result = [];
-    if (data == null || !(data instanceof Lang.Dictionary)) {
-        return result;
-    }
-    var raw = data.get("points");
-    if (raw == null || !(raw instanceof Lang.Array)) {
-        return result;
-    }
-    for (var i = 0; i < raw.size(); i++) {
-        var p = raw[i];
-        if (p == null) { continue; }
-        var lat = p.get("lat");
-        var lon = p.get("lon");
-        if (lat == null || lon == null) { continue; }
-        result.add({"lat" => lat.toFloat(), "lon" => lon.toFloat()});
+    if (bytes == null) { return result; }
+    var n = bytes.size();
+    var i = 0;
+    while (i + 8 <= n) {
+        var latInt = int32FromBytesAt(bytes, i);
+        var lonInt = int32FromBytesAt(bytes, i + 4);
+        result.add({
+            "lat" => latInt.toFloat() / 10000000.0,
+            "lon" => lonInt.toFloat() / 10000000.0
+        });
+        i += 8;
     }
     return result;
 }

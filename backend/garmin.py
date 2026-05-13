@@ -1,5 +1,6 @@
 import math
 import os
+import struct
 import threading
 import xml.etree.ElementTree as ET
 
@@ -81,6 +82,18 @@ def _parse_gpx(gpx_bytes: bytes) -> list[dict]:
             "lon": float(trkpt.attrib["lon"]),
         })
     return points
+
+
+def encode_points_binary(points: list[dict]) -> bytes:
+    """Pack lat/lon pairs as big-endian int32 scaled by 1e7.
+
+    8 bytes per point. Precision: 1e-7 degrees ≈ 11 mm — sufficient for
+    navigation. int32 covers ±214 degrees, so all valid lat/lon fit.
+    """
+    return struct.pack(f">{2 * len(points)}i", *[
+        v for p in points
+        for v in (round(p["lat"] * 1e7), round(p["lon"] * 1e7))
+    ])
 
 
 def thin_points(points: list[dict], min_m: float = 15) -> list[dict]:
