@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+        working-directory: backend
+
+      - name: Run tests
+        run: pytest -v --tb=short
+        working-directory: backend
+
+  # Monkey C (widget) tests require the Garmin Connect IQ SDK simulator
+  # and cannot run in CI without a proprietary GUI environment.
+  # Run them locally: open monkey.jungle in VS Code with the Monkey C
+  # extension installed, then Run > Run Tests (Edge 530 simulator profile).
