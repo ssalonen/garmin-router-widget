@@ -26,7 +26,18 @@ jobs:
         run: pytest -v --tb=short
         working-directory: backend
 
-  # Monkey C (widget) tests require the Garmin Connect IQ SDK simulator
-  # and cannot run in CI without a proprietary GUI environment.
-  # Run them locally: open monkey.jungle in VS Code with the Monkey C
-  # extension installed, then Run > Run Tests (Edge 530 simulator profile).
+  widget:
+    name: Widget tests (Monkey C)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Monkey C unit tests
+        uses: matco/action-connectiq-tester@v1
+        with:
+          # Runs (:test)-annotated functions in the simulator via Xvfb.
+          # The action handles SDK download, compilation (monkeyc), and
+          # test execution (monkeydo --test) headlessly.
+          device: edge530
+          path: widget
