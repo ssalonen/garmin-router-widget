@@ -3,7 +3,7 @@
 
 using Toybox.Application;
 using Toybox.Graphics;
-using Toybox.Navigation;
+using Toybox.Lang;
 using Toybox.System;
 using Toybox.WatchUi;
 
@@ -130,8 +130,8 @@ class CourseListView extends WatchUi.View {
         if (code == 200 && data != null) {
             var locs = decodeBinaryPoints(data);
             if (locs.size() > 0) {
-                // TODO: verify Navigation.startNavigation() signature on Edge 530 API 3.3
-                Navigation.startNavigation(locs);
+                // Toybox.Navigation does not exist in the CIQ SDK; navigation
+                // must be started via the device's native route/course UI.
                 state = STATE_NAVIGATING;
                 _logger.info("Navigation started", {
                     "name" => _navigatingName,

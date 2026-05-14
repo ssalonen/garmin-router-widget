@@ -1,5 +1,6 @@
 // Pure utility functions — no device API dependencies, fully testable.
 
+using Toybox.Lang;
 using Toybox.Position;
 
 // State constants used across the widget

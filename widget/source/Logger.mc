@@ -3,6 +3,7 @@
 // Skips cloud post if a request is already in flight to avoid BLE_QUEUE_FULL.
 
 using Toybox.Communications;
+using Toybox.Lang;
 using Toybox.System;
 using Toybox.Time;
 

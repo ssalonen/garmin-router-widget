@@ -2,6 +2,7 @@
 // Adds per-request timing (ms) and passes it to callbacks as a third argument.
 
 using Toybox.Communications;
+using Toybox.Lang;
 using Toybox.System;
 
 class CourseLoader {
@@ -43,8 +44,7 @@ class CourseLoader {
             url,
             null,
             {
-                :method       => Communications.HTTP_REQUEST_METHOD_GET,
-                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_BIN
+                :method => Communications.HTTP_REQUEST_METHOD_GET
             },
             method(:_onCoursePointsRaw)
         );

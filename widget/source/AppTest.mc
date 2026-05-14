@@ -2,6 +2,8 @@
 // Run via: Connect IQ simulator → Run Tests, or `monkeydo --test`.
 // No hardware API dependencies.
 
+using Toybox.Lang;
+using Toybox.Position;
 using Toybox.Test;
 
 // ---- Helper: pack an int32 big-endian into a ByteArray at offset --------
