@@ -2,12 +2,4 @@
     <setting propertyKey="@Properties.debugMode" title="Debug Mode">
         <settingConfig type="boolean"/>
     </setting>
-    <setting propertyKey="@Properties.maxCourses" title="Max Courses">
-        <settingConfig type="list">
-            <listEntry value="5">5</listEntry>
-            <listEntry value="10">10</listEntry>
-            <listEntry value="15">15</listEntry>
-            <listEntry value="20">20</listEntry>
-        </settingConfig>
-    </setting>
 </settings>
