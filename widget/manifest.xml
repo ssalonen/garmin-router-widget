@@ -14,7 +14,7 @@
             <iq:uses-permission id="Positioning"/>
         </iq:permissions>
         <iq:languages>
-            <iq:language id="eng"/>
+            <iq:language>eng</iq:language>
         </iq:languages>
     </iq:application>
 </iq:manifest>
