@@ -31,7 +31,7 @@ class Logger {
             "level" => level,
             "msg"   => msg
         };
-        if (ctx != null && ctx instanceof Lang.Dictionary) {
+        if (ctx != null) {
             var keys = ctx.keys();
             for (var i = 0; i < keys.size(); i++) {
                 entry.put(keys[i], ctx.get(keys[i]));
