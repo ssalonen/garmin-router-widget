@@ -36,7 +36,7 @@ class Logger {
         if (ctx != null) {
             var keys = ctx.keys();
             for (var i = 0; i < keys.size(); i++) {
-                entry.put(keys[i], ctx.get(keys[i]));
+                entry.put(keys[i], ctx.get(keys[i]) as Lang.Object);
             }
         }
         _lastEntry = entry;
