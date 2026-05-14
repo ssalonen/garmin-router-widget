@@ -34,13 +34,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Monkey C unit tests
-        # Run tester.sh directly (not via action's entrypoint.sh) so that
-        # monkeyc/monkeydo output is visible in CI logs rather than hidden
-        # behind ::debug:: annotations.
-        run: |
-          docker run --rm \
-            -v "$PWD/widget:/app" \
-            --workdir /app \
-            --entrypoint tester.sh \
-            ghcr.io/matco/connectiq-tester:latest \
-            edge530 ""
+        uses: matco/action-connectiq-tester@v1
+        with:
+          device: edge530
+          path: widget
