@@ -7,9 +7,7 @@ using Toybox.Position;
 using Toybox.Test;
 
 // ---- Helper: pack an int32 big-endian into a ByteArray at offset --------
-// Tagged (:test) so it is excluded from production builds.
 
-(:test)
 function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.Number) as Void {
     bytes[offset]     = (val >> 24) & 0xFF;
     bytes[offset + 1] = (val >> 16) & 0xFF;
