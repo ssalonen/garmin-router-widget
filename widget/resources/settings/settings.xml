@@ -1,6 +1,6 @@
 <settings>
     <setting propertyKey="@Properties.backendUrl" title="Backend URL">
-        <settingConfig type="text"/>
+        <settingConfig/>
     </setting>
     <setting propertyKey="@Properties.debugMode" title="Debug Mode">
         <settingConfig type="boolean"/>
