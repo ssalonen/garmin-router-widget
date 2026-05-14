@@ -3,7 +3,7 @@
     <iq:application
         entry="RouteLoaderApp"
         id="a3f7c2d1-5b4e-4a8f-9c3d-7e2b1f5d4c8a"
-        name="Route Loader"
+        launchLabel="Route Loader"
         minSdkVersion="3.1.0"
         type="widget">
         <iq:products>
