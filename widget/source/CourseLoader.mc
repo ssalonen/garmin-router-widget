@@ -8,12 +8,14 @@ using Toybox.System;
 
 class CourseLoader {
     var _baseUrl         as Lang.String;
+    var _headers         as Lang.Dictionary;
     var _logger          as Logger;
     var _requestStart    as Lang.Number;
     var _pendingCallback as Lang.Method?;
 
-    function initialize(baseUrl as Lang.String, logger as Logger) {
+    function initialize(baseUrl as Lang.String, apiKey as Lang.String, logger as Logger) {
         _baseUrl         = baseUrl;
+        _headers         = {"X-Api-Key" => apiKey};
         _logger          = logger;
         _requestStart    = 0;
         _pendingCallback = null;
@@ -30,7 +32,8 @@ class CourseLoader {
             null,
             {
                 :method       => Communications.HTTP_REQUEST_METHOD_GET,
-                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON
+                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON,
+                :headers      => _headers
             },
             method(:_onCourseListRaw)
         );
@@ -46,7 +49,8 @@ class CourseLoader {
             url,
             null,
             {
-                :method => Communications.HTTP_REQUEST_METHOD_GET
+                :method  => Communications.HTTP_REQUEST_METHOD_GET,
+                :headers => _headers
             },
             method(:_onCoursePointsRaw)
         );

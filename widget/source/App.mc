@@ -17,8 +17,11 @@ class RouteLoaderApp extends Application.AppBase {
 
         var debugMode = Application.Properties.getValue("debugMode");
 
+        var apiKeyProp = Application.Properties.getValue("apiKey");
+        var apiKey = (apiKeyProp instanceof Lang.String) ? apiKeyProp as Lang.String : "";
+
         var logger   = new Logger(backendUrl);
-        var loader   = new CourseLoader(backendUrl, logger);
+        var loader   = new CourseLoader(backendUrl, apiKey, logger);
         var view     = new CourseListView(loader, logger, debugMode);
         var delegate = new CourseListDelegate(view);
 
