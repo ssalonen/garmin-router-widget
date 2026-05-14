@@ -1,9 +1,7 @@
 <settings>
     <setting propertyKey="@Properties.backendUrl" title="Backend URL">
-        <settingConfig type="string"/>
     </setting>
     <setting propertyKey="@Properties.debugMode" title="Debug Mode">
-        <settingConfig type="boolean"/>
     </setting>
     <setting propertyKey="@Properties.maxCourses" title="Max Courses">
         <settingConfig type="number" min="3" max="20"/>
