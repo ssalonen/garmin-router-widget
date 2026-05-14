@@ -1,0 +1,5 @@
+<layouts>
+    <layout id="MainLayout">
+        <!-- All drawing is done programmatically in onUpdate() -->
+    </layout>
+</layouts>

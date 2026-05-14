@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Backend
+backend/*.db
+backend/.env
+backend/your_data/
+backend/demo.py
+
+# Connect IQ compiled output
+widget/bin/*.prg
+widget/bin/*.prg.debug
+widget/bin/*.iq
+
+# macOS
+.DS_Store
+widget/bin/

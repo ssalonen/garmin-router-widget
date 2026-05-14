@@ -1,0 +1,5 @@
+<settings>
+    <setting propertyKey="@Properties.debugMode" title="Debug Mode">
+        <settingConfig type="boolean"/>
+    </setting>
+</settings>
