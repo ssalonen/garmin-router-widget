@@ -11,7 +11,7 @@ class Logger {
     var _lastEntry;
     var _inflight;  // true while a cloud POST is pending
 
-    function initialize(backendUrl) {
+    function initialize(backendUrl as Lang.String) {
         _logUrl    = backendUrl + "/api/log";
         _lastEntry = {};
         _inflight  = false;

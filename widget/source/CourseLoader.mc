@@ -5,18 +5,20 @@ using Toybox.Communications;
 using Toybox.System;
 
 class CourseLoader {
-    var _baseUrl;
-    var _logger;
-    var _requestStart;  // System.getTimer() at request start
-    var _pendingCallback;
+    var _baseUrl         as Lang.String;
+    var _logger          as Logger;
+    var _requestStart    as Lang.Long;
+    var _pendingCallback as Lang.Method?;
 
-    function initialize(baseUrl, logger) {
-        _baseUrl = baseUrl;
-        _logger  = logger;
+    function initialize(baseUrl as Lang.String, logger as Logger) {
+        _baseUrl         = baseUrl;
+        _logger          = logger;
+        _requestStart    = System.getTimer();
+        _pendingCallback = null;
     }
 
     // Calls callback.invoke(responseCode, data, durationMs)
-    function fetchCourseList(limit, callback) {
+    function fetchCourseList(limit, callback as Lang.Method) {
         _pendingCallback = callback;
         _requestStart    = System.getTimer();
         var url = _baseUrl + "/api/courses?limit=" + limit;
@@ -33,7 +35,7 @@ class CourseLoader {
     }
 
     // Calls callback.invoke(responseCode, data, durationMs)
-    function fetchCoursePoints(courseId, callback) {
+    function fetchCoursePoints(courseId as Lang.String, callback as Lang.Method) {
         _pendingCallback = callback;
         _requestStart    = System.getTimer();
         var url = _baseUrl + "/api/course/" + courseId;

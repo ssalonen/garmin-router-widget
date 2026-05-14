@@ -8,12 +8,15 @@ class RouteLoaderApp extends Application.AppBase {
     }
 
     function getInitialView() {
-        var backendUrl = Application.Properties.getValue("backendUrl");
-        var debugMode  = Application.Properties.getValue("debugMode");
-
-        if (backendUrl == null || backendUrl.equals("")) {
-            backendUrl = "https://your-server.example.com";
+        var backendUrl as Lang.String = "https://your-server.example.com";
+        var rawUrl = Application.Properties.getValue("backendUrl");
+        if (rawUrl instanceof Lang.String) {
+            var s = rawUrl as Lang.String;
+            if (!s.equals("")) {
+                backendUrl = s;
+            }
         }
+        var debugMode = Application.Properties.getValue("debugMode");
         if (debugMode == null) {
             debugMode = false;
         }
