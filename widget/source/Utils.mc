@@ -22,7 +22,7 @@ function parseCourseList(data) {
     }
     for (var i = 0; i < raw.size(); i++) {
         var item = raw[i];
-        if (item == null) { continue; }
+        if (!(item instanceof Lang.Dictionary)) { continue; }
         var id   = item.get("id");
         var name = item.get("name");
         if (id == null || name == null) { continue; }

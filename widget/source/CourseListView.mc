@@ -65,10 +65,15 @@ class CourseListView extends WatchUi.View {
     function selectCourse() {
         if (state != STATE_LIST_READY || _courses == null || _courses.size() == 0) { return; }
         var course = _courses[_selectedIdx];
-        _navigatingName = course.get("name");
+        if (!(course instanceof Lang.Dictionary)) { return; }
+        var cname = course.get("name");
+        _navigatingName = (cname != null) ? cname.toString() : "";
         state = STATE_LOADING_COURSE;
         WatchUi.requestUpdate();
-        _loader.fetchCoursePoints(course.get("id"), method(:onCoursePointsResponse));
+        var cid = course.get("id");
+        if (cid != null) {
+            _loader.fetchCoursePoints(cid.toString(), method(:onCoursePointsResponse));
+        }
     }
 
     function refresh() {
@@ -211,15 +216,16 @@ class CourseListView extends WatchUi.View {
                 dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
             }
 
+            if (!(course instanceof Lang.Dictionary)) { continue; }
             var name = course.get("name");
-            if (name == null) { name = "Course " + idx; }
-            dc.drawText(8, y + 6, Graphics.FONT_SMALL, name,
+            var nameStr = (name != null) ? name.toString() : "Course " + idx;
+            dc.drawText(8, y + 6, Graphics.FONT_SMALL, nameStr,
                 Graphics.TEXT_JUSTIFY_LEFT);
 
             var dist = course.get("distanceKm");
             if (dist != null) {
                 dc.drawText(screenW - 5, y + 6, Graphics.FONT_TINY,
-                    dist.format("%.1f") + "km", Graphics.TEXT_JUSTIFY_RIGHT);
+                    dist.toString() + "km", Graphics.TEXT_JUSTIFY_RIGHT);
             }
         }
 
@@ -275,7 +281,7 @@ class CourseListView extends WatchUi.View {
             "LOADING_LIST", "LIST_READY", "LOADING_COURSE", "NAVIGATING", "ERROR"
         ];
         var stateLabel = (state >= 0 && state < stateLabels.size())
-            ? stateLabels[state]
+            ? stateLabels[state].toString()
             : "?";
         dc.drawText(4, 18, Graphics.FONT_TINY, "State: " + stateLabel,
             Graphics.TEXT_JUSTIFY_LEFT);
@@ -285,16 +291,17 @@ class CourseListView extends WatchUi.View {
             var lvl = last.get("level");
             var msg = last.get("msg");
             if (lvl != null && msg != null) {
-                // Truncate long messages for the small screen
-                if (msg.length() > 24) { msg = msg.substring(0, 24) + ".."; }
-                dc.drawText(4, 34, Graphics.FONT_TINY, lvl + ": " + msg,
+                var msgStr = msg.toString();
+                if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
+                dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
                     Graphics.TEXT_JUSTIFY_LEFT);
             }
             var httpStatus = last.get("http_status");
             var ms = last.get("ms");
             if (httpStatus != null) {
+                var msStr = (ms != null) ? ms.toString() : _lastDurationMs.toString();
                 dc.drawText(4, 50, Graphics.FONT_TINY,
-                    "HTTP " + httpStatus + "  " + (ms != null ? ms : _lastDurationMs) + "ms",
+                    "HTTP " + httpStatus.toString() + "  " + msStr + "ms",
                     Graphics.TEXT_JUSTIFY_LEFT);
             }
         }

@@ -60,16 +60,16 @@ function testDecodeBinaryPoints_twoPoints(logger) {
     Test.assertEqual(locs.size(), 2);
 
     var coords = locs[0].toDegrees();  // [lat, lon]
-    var d = coords[0] - 60.1699;
+    var d = coords[0].toFloat() - 60.1699;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    d = coords[1] - 24.9384;
+    d = coords[1].toFloat() - 24.9384;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
     coords = locs[1].toDegrees();
-    d = coords[0] - 60.1800;
+    d = coords[0].toFloat() - 60.1800;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
@@ -86,11 +86,11 @@ function testDecodeBinaryPoints_negativeCoords(logger) {
     Test.assertEqual(locs.size(), 1);
 
     var coords = locs[0].toDegrees();
-    var d = coords[0] - (-33.8688);
+    var d = coords[0].toFloat() - (-33.8688);
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    d = coords[1] - 151.2093;
+    d = coords[1].toFloat() - 151.2093;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
