@@ -26,6 +26,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get cache key (14-day window)
+        id: period
+        run: echo "key=$(( $(date +%s) / 86400 / 14 ))" >> $GITHUB_OUTPUT
+
+      - name: Cache Connect IQ Docker image
+        id: cache-ciq
+        uses: actions/cache@v4
+        with:
+          path: /tmp/connectiq.tar
+          key: connectiq-${{ steps.period.outputs.key }}
+
+      - name: Pull and save image (cache miss)
+        if: steps.cache-ciq.outputs.cache-hit != 'true'
+        run: |
+          docker pull ghcr.io/matco/connectiq-tester:latest
+          docker save ghcr.io/matco/connectiq-tester:latest -o /tmp/connectiq.tar
+
+      - name: Load image (cache hit)
+        if: steps.cache-ciq.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/connectiq.tar
+
       - name: Run Monkey C unit tests
         # To run locally (shows full output):
         #   docker run --rm -v "$PWD/widget:/app" --workdir /app \
