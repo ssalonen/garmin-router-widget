@@ -10,13 +10,10 @@ class RouteLoaderApp extends Application.AppBase {
 
     function getInitialView() {
         var backendUrlProp = Application.Properties.getValue("backendUrl");
-        var backendUrl as Lang.String;
-        if (backendUrlProp == null || !(backendUrlProp instanceof Lang.String)
-                || (backendUrlProp as Lang.String).equals("")) {
-            backendUrl = "https://your-server.example.com";
-        } else {
-            backendUrl = backendUrlProp as Lang.String;
-        }
+        var backendUrl = ((backendUrlProp instanceof Lang.String) &&
+                         !(backendUrlProp as Lang.String).equals(""))
+            ? backendUrlProp as Lang.String
+            : "https://your-server.example.com";
 
         var debugMode = Application.Properties.getValue("debugMode");
 
