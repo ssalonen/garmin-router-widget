@@ -129,9 +129,9 @@ function testParseCourseList_happyPath(logger as Test.Logger) as Lang.Boolean {
     };
     var courses = parseCourseList(data);
     Test.assertEqual(courses.size(), 2);
-    Test.assertEqual((courses[0] as Lang.Dictionary).get("id"),   "111222333");
-    Test.assertEqual((courses[0] as Lang.Dictionary).get("name"), "Morning Trail");
-    Test.assertEqual((courses[1] as Lang.Dictionary).get("id"),   "444555666");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("id")   as Lang.Object, "111222333");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("name") as Lang.Object, "Morning Trail");
+    Test.assertEqual((courses[1] as Lang.Dictionary).get("id")   as Lang.Object, "444555666");
     return true;
 }
 
@@ -158,7 +158,7 @@ function testParseCourseList_skipsIncompleteItems(logger as Test.Logger) as Lang
     };
     var courses = parseCourseList(data);
     Test.assertEqual(courses.size(), 1);
-    Test.assertEqual((courses[0] as Lang.Dictionary).get("name"), "Good Course");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("name") as Lang.Object, "Good Course");
     return true;
 }
 

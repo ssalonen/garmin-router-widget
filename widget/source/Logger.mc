@@ -4,17 +4,18 @@
 
 using Toybox.Communications;
 using Toybox.Lang;
+using Toybox.PersistedContent;
 using Toybox.System;
 using Toybox.Time;
 
 class Logger {
     var _logUrl    as Lang.String;
-    var _lastEntry as Lang.Dictionary;
+    var _lastEntry as Lang.Dictionary<Lang.Object, Lang.Object>;
     var _inflight  as Lang.Boolean;
 
     function initialize(backendUrl as Lang.String) {
         _logUrl    = backendUrl + "/api/log";
-        _lastEntry = {};
+        _lastEntry = {} as Lang.Dictionary<Lang.Object, Lang.Object>;
         _inflight  = false;
     }
 
@@ -22,7 +23,7 @@ class Logger {
     function warn(msg as Lang.String, ctx as Lang.Dictionary?)  as Void { _log("WARN",  msg, ctx); }
     function error(msg as Lang.String, ctx as Lang.Dictionary?) as Void { _log("ERROR", msg, ctx); }
 
-    function getLastEntry() as Lang.Dictionary { return _lastEntry; }
+    function getLastEntry() as Lang.Dictionary<Lang.Object, Lang.Object> { return _lastEntry; }
 
     function _log(level as Lang.String, msg as Lang.String, ctx as Lang.Dictionary?) as Void {
         System.println(level + ": " + msg);
@@ -31,7 +32,7 @@ class Logger {
             "ts"    => Time.now().value(),
             "level" => level,
             "msg"   => msg
-        };
+        } as Lang.Dictionary<Lang.Object, Lang.Object>;
         if (ctx != null) {
             var keys = ctx.keys();
             for (var i = 0; i < keys.size(); i++) {
@@ -45,7 +46,7 @@ class Logger {
         }
     }
 
-    function _postToCloud(entry as Lang.Dictionary) as Void {
+    function _postToCloud(entry as Lang.Dictionary<Lang.Object, Lang.Object>) as Void {
         _inflight = true;
         Communications.makeWebRequest(
             _logUrl,
@@ -59,7 +60,7 @@ class Logger {
         );
     }
 
-    function _onLogResponse(code as Lang.Number, data as Lang.Object?) as Void {
+    function _onLogResponse(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
         _inflight = false;
         // fire-and-forget: ignore result
     }

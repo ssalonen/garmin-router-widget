@@ -3,6 +3,7 @@
 
 using Toybox.Communications;
 using Toybox.Lang;
+using Toybox.PersistedContent;
 using Toybox.System;
 
 class CourseLoader {
@@ -51,20 +52,20 @@ class CourseLoader {
         );
     }
 
-    function _onCourseListRaw(code as Lang.Number, data as Lang.Object?) as Void {
+    function _onCourseListRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
         var ms = System.getTimer() - _requestStart;
-        _logger.info("Course list response", {"http_status" => code, "duration_ms" => ms});
+        _logger.info("Course list response", {"http_status" => responseCode, "duration_ms" => ms});
         if (_pendingCallback != null) {
-            (_pendingCallback as Lang.Method).invoke(code, data, ms);
+            (_pendingCallback as Lang.Method).invoke(responseCode, data, ms);
             _pendingCallback = null;
         }
     }
 
-    function _onCoursePointsRaw(code as Lang.Number, data as Lang.Object?) as Void {
+    function _onCoursePointsRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
         var ms = System.getTimer() - _requestStart;
-        _logger.info("Course points response", {"http_status" => code, "duration_ms" => ms});
+        _logger.info("Course points response", {"http_status" => responseCode, "duration_ms" => ms});
         if (_pendingCallback != null) {
-            (_pendingCallback as Lang.Method).invoke(code, data, ms);
+            (_pendingCallback as Lang.Method).invoke(responseCode, data, ms);
             _pendingCallback = null;
         }
     }

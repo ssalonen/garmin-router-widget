@@ -1,4 +1,5 @@
 using Toybox.Application;
+using Toybox.Lang;
 using Toybox.WatchUi;
 
 class RouteLoaderApp extends Application.AppBase {
@@ -8,15 +9,16 @@ class RouteLoaderApp extends Application.AppBase {
     }
 
     function getInitialView() {
-        var backendUrl = Application.Properties.getValue("backendUrl");
-        var debugMode  = Application.Properties.getValue("debugMode");
-
-        if (backendUrl == null || backendUrl.equals("")) {
+        var backendUrlProp = Application.Properties.getValue("backendUrl");
+        var backendUrl as Lang.String;
+        if (backendUrlProp == null || !(backendUrlProp instanceof Lang.String)
+                || (backendUrlProp as Lang.String).equals("")) {
             backendUrl = "https://your-server.example.com";
+        } else {
+            backendUrl = backendUrlProp as Lang.String;
         }
-        if (debugMode == null) {
-            debugMode = false;
-        }
+
+        var debugMode = Application.Properties.getValue("debugMode");
 
         var logger   = new Logger(backendUrl);
         var loader   = new CourseLoader(backendUrl, logger);
@@ -26,8 +28,7 @@ class RouteLoaderApp extends Application.AppBase {
         return [view, delegate];
     }
 
-    function onSettingsChanged() {
-        // Settings changed via Garmin Connect Mobile; restart the widget view
+    function onSettingsChanged() as Void {
         WatchUi.requestUpdate();
     }
 }
