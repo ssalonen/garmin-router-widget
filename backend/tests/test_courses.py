@@ -50,6 +50,26 @@ def _decode(data: bytes) -> list[dict]:
     return points
 
 
+
+# Golden vectors — exact bytes that the Monkey C decoder must also accept.
+# If Python produces these bytes AND Monkey C decodes them correctly,
+# the wire format is proven end-to-end compatible.
+#   Helsinki : lat= 60.1699, lon= 24.9384  → 0x23dd32b8 0x0edd4c40
+#   Sydney   : lat=-33.8688, lon=151.2093  → 0xebd00800 0x5a20b548
+GOLDEN_HELSINKI = bytes([35, 221, 50, 184, 14, 221, 76, 64])
+GOLDEN_SYDNEY   = bytes([235, 208, 8, 0, 90, 32, 181, 72])
+
+
+def test_encode_golden_helsinki():
+    from garmin import encode_points_binary
+    assert encode_points_binary([{"lat": 60.1699, "lon": 24.9384}]) == GOLDEN_HELSINKI
+
+
+def test_encode_golden_sydney():
+    from garmin import encode_points_binary
+    assert encode_points_binary([{"lat": -33.8688, "lon": 151.2093}]) == GOLDEN_SYDNEY
+
+
 def test_encode_binary_roundtrip_positive():
     from garmin import encode_points_binary
     pts = [{"lat": 60.1699, "lon": 24.9384}]

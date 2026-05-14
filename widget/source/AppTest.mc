@@ -46,51 +46,54 @@ function testInt32FromBytesAt_offset(logger as Test.Logger) as Lang.Boolean {
 }
 
 // ---- decodeBinaryPoints --------------------------------------------------
+// Golden vectors: exact bytes produced by the Python backend encoder.
+// Helsinki : lat=60.1699, lon=24.9384  → [35,221,50,184, 14,221,76,64]
+// Sydney   : lat=-33.8688, lon=151.2093 → [235,208,8,0, 90,32,181,72]
+// These byte literals are the source of truth for wire-format compatibility.
 
 (:test)
-function testDecodeBinaryPoints_twoPoints(logger as Test.Logger) as Lang.Boolean {
-    // (60.1699, 24.9384) and (60.1800, 24.9500)
-    var bytes = new [16]b;
-    _packInt32(bytes,  0, 601699000);
-    _packInt32(bytes,  4, 249384000);
-    _packInt32(bytes,  8, 601800000);
-    _packInt32(bytes, 12, 249500000);
-
+function testDecodeBinaryPoints_goldenHelsinki(logger as Test.Logger) as Lang.Boolean {
+    var bytes = [35, 221, 50, 184, 14, 221, 76, 64]b;
     var locs = decodeBinaryPoints(bytes);
-    Test.assertEqual(locs.size(), 2);
-
-    var coords = (locs[0] as Position.Location).toDegrees();  // [lat, lon]
+    Test.assertEqual(locs.size(), 1);
+    var coords = (locs[0] as Position.Location).toDegrees();
     var d = (coords[0] as Lang.Double).toFloat() - 60.1699;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
-
     d = (coords[1] as Lang.Double).toFloat() - 24.9384;
-    if (d < 0) { d = -d; }
-    Test.assert(d < 0.0001);
-
-    coords = (locs[1] as Position.Location).toDegrees();
-    d = (coords[0] as Lang.Double).toFloat() - 60.1800;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
 }
 
 (:test)
-function testDecodeBinaryPoints_negativeCoords(logger as Test.Logger) as Lang.Boolean {
-    // (-33.8688, 151.2093) — Sydney: negative lat, lon byte > 127
-    var bytes = new [8]b;
-    _packInt32(bytes, 0, -338688000);
-    _packInt32(bytes, 4, 1512093000);
-
+function testDecodeBinaryPoints_goldenSydney(logger as Test.Logger) as Lang.Boolean {
+    // Negative lat, lon byte > 127 — stresses sign handling
+    var bytes = [235, 208, 8, 0, 90, 32, 181, 72]b;
     var locs = decodeBinaryPoints(bytes);
     Test.assertEqual(locs.size(), 1);
-
     var coords = (locs[0] as Position.Location).toDegrees();
     var d = (coords[0] as Lang.Double).toFloat() - (-33.8688);
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
-
     d = (coords[1] as Lang.Double).toFloat() - 151.2093;
+    if (d < 0) { d = -d; }
+    Test.assert(d < 0.0001);
+    return true;
+}
+
+(:test)
+function testDecodeBinaryPoints_twoPoints(logger as Test.Logger) as Lang.Boolean {
+    // Helsinki + a second point, assembled from _packInt32 helper
+    var bytes = new [16]b;
+    _packInt32(bytes,  0, 601699000);
+    _packInt32(bytes,  4, 249384000);
+    _packInt32(bytes,  8, 601800000);
+    _packInt32(bytes, 12, 249500000);
+    var locs = decodeBinaryPoints(bytes);
+    Test.assertEqual(locs.size(), 2);
+    var coords = (locs[1] as Position.Location).toDegrees();
+    var d = (coords[0] as Lang.Double).toFloat() - 60.1800;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
     return true;
