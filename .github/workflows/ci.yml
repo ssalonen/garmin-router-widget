@@ -26,16 +26,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get cache key (weekly)
-        id: week
-        run: echo "key=$(date +%Y-%U)" >> $GITHUB_OUTPUT
+      - name: Get cache key (14-day window)
+        id: period
+        run: echo "key=$(( $(date +%s) / 86400 / 14 ))" >> $GITHUB_OUTPUT
 
       - name: Cache Connect IQ Docker image
         id: cache-ciq
         uses: actions/cache@v4
         with:
           path: /tmp/connectiq.tar
-          key: connectiq-${{ steps.week.outputs.key }}
+          key: connectiq-${{ steps.period.outputs.key }}
 
       - name: Pull and save image (cache miss)
         if: steps.cache-ciq.outputs.cache-hit != 'true'
