@@ -291,17 +291,20 @@ class CourseListView extends WatchUi.View {
             Graphics.TEXT_JUSTIFY_LEFT);
 
         var last = _logger.getLastEntry();
-        if (last != null && last instanceof Lang.Dictionary) {
-            var lvl = last.get("level");
-            var msg = last.get("msg");
-            if (lvl != null && msg != null) {
-                var msgStr = msg.toString();
-                if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
-                dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
-                    Graphics.TEXT_JUSTIFY_LEFT);
+        if (last instanceof Lang.Dictionary) {
+            var lastDict = last as Lang.Dictionary;
+            var lvl = lastDict.get("level");
+            var msg = lastDict.get("msg");
+            if (lvl != null) {
+                if (msg != null) {
+                    var msgStr = msg.toString();
+                    if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
+                    dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
+                        Graphics.TEXT_JUSTIFY_LEFT);
+                }
             }
-            var httpStatus = last.get("http_status");
-            var ms = last.get("ms");
+            var httpStatus = lastDict.get("http_status");
+            var ms = lastDict.get("ms");
             if (httpStatus != null) {
                 var msStr = (ms != null) ? ms.toString() : _lastDurationMs.toString();
                 dc.drawText(4, 50, Graphics.FONT_TINY,

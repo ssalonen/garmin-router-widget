@@ -5,15 +5,14 @@ using Toybox.Communications;
 using Toybox.System;
 
 class CourseLoader {
-    var _baseUrl         as Lang.String;
-    var _logger          as Logger;
-    var _requestStart    as Lang.Long;
+    var _baseUrl;
+    var _logger;
+    var _requestStart;  // System.getTimer() at request start
     var _pendingCallback as Lang.Method?;
 
-    function initialize(baseUrl as Lang.String, logger as Logger) {
+    function initialize(baseUrl, logger) {
         _baseUrl         = baseUrl;
         _logger          = logger;
-        _requestStart    = System.getTimer();
         _pendingCallback = null;
     }
 
