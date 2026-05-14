@@ -1,5 +1,5 @@
 <properties>
     <property id="backendUrl" type="string">https://your-server.example.com</property>
     <property id="debugMode" type="boolean">false</property>
-    <property id="maxCourses" type="numeric">10</property>
+    <property id="maxCourses" type="number">10</property>
 </properties>

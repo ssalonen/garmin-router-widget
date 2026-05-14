@@ -1,14 +1,11 @@
 <settings>
     <setting propertyKey="@Properties.backendUrl" title="Backend URL">
         <settingConfig type="string"/>
-        <settingConfig>
-            <listEntry value="https://your-server.example.com"/>
-        </settingConfig>
     </setting>
     <setting propertyKey="@Properties.debugMode" title="Debug Mode">
         <settingConfig type="boolean"/>
     </setting>
     <setting propertyKey="@Properties.maxCourses" title="Max Courses">
-        <settingConfig type="numeric" min="3" max="20"/>
+        <settingConfig type="number" min="3" max="20"/>
     </setting>
 </settings>
