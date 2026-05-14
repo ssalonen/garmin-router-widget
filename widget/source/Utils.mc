@@ -12,25 +12,27 @@ const STATE_ERROR          = 4;
 
 // Parse the /api/courses JSON response into an array of course dicts.
 // Returns [] on any failure so callers never deal with null.
-function parseCourseList(data) as Lang.Array {
+function parseCourseList(data as Lang.Object?) as Lang.Array {
     var result = [];
     if (data == null || !(data instanceof Lang.Dictionary)) {
         return result;
     }
-    var raw = data.get("courses");
+    var raw = (data as Lang.Dictionary).get("courses");
     if (raw == null || !(raw instanceof Lang.Array)) {
         return result;
     }
-    for (var i = 0; i < raw.size(); i++) {
-        var item = raw[i];
+    var rawArr = raw as Lang.Array;
+    for (var i = 0; i < rawArr.size(); i++) {
+        var item = rawArr[i];
         if (!(item instanceof Lang.Dictionary)) { continue; }
-        var id   = item.get("id");
-        var name = item.get("name");
+        var itemDict = item as Lang.Dictionary;
+        var id   = itemDict.get("id");
+        var name = itemDict.get("name");
         if (id == null || name == null) { continue; }
         result.add({
             "id"         => id.toString(),
             "name"       => name,
-            "distanceKm" => item.get("distanceKm")
+            "distanceKm" => itemDict.get("distanceKm")
         });
     }
     return result;
@@ -50,15 +52,16 @@ function int32FromBytesAt(bytes as Lang.ByteArray, offset as Lang.Number) as Lan
     return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
 }
 
-function decodeBinaryPoints(bytes) as Lang.Array {
+function decodeBinaryPoints(bytes as Lang.Object?) as Lang.Array {
     var result = [];
     if (bytes == null) { return result; }
     if (!(bytes instanceof Lang.ByteArray)) { return result; }
-    var n = bytes.size();
+    var ba = bytes as Lang.ByteArray;
+    var n = ba.size();
     var i = 0;
     while (i + 8 <= n) {
-        var latInt = int32FromBytesAt(bytes, i);
-        var lonInt = int32FromBytesAt(bytes, i + 4);
+        var latInt = int32FromBytesAt(ba, i);
+        var lonInt = int32FromBytesAt(ba, i + 4);
         result.add(new Position.Location({
             :latitude  => latInt.toFloat() / 10000000.0,
             :longitude => lonInt.toFloat() / 10000000.0,
@@ -70,17 +73,18 @@ function decodeBinaryPoints(bytes) as Lang.Array {
 }
 
 // Map HTTP / BLE error codes to human-readable strings for on-screen display.
-function httpErrorString(code) as Lang.String {
+function httpErrorString(code as Lang.Object?) as Lang.String {
     if (code == null) { return "Unknown error"; }
     if (!(code instanceof Lang.Number)) { return "Unknown error"; }
-    if (code == -104) { return "Out of memory";     }
-    if (code == -300) { return "BLE host timeout";  }
-    if (code == -301) { return "BLE server timeout";}
-    if (code == -400) { return "No BLE data";       }
-    if (code == -401) { return "Connection lost";   }
-    if (code == -402) { return "Network error";     }
-    if (code == 404)  { return "Course not found";  }
-    if (code == 502)  { return "Backend error";     }
-    if (code > 0)     { return "HTTP " + code;      }
-    return "Error " + code;
+    var c = code as Lang.Number;
+    if (c == -104) { return "Out of memory";     }
+    if (c == -300) { return "BLE host timeout";  }
+    if (c == -301) { return "BLE server timeout";}
+    if (c == -400) { return "No BLE data";       }
+    if (c == -401) { return "Connection lost";   }
+    if (c == -402) { return "Network error";     }
+    if (c == 404)  { return "Course not found";  }
+    if (c == 502)  { return "Backend error";     }
+    if (c > 0)     { return "HTTP " + c;         }
+    return "Error " + c;
 }

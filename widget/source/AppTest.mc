@@ -10,7 +10,7 @@ using Toybox.Test;
 // Tagged (:test) so it is excluded from production builds.
 
 (:test)
-function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.Number) {
+function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.Number) as Void {
     bytes[offset]     = (val >> 24) & 0xFF;
     bytes[offset + 1] = (val >> 16) & 0xFF;
     bytes[offset + 2] = (val >> 8)  & 0xFF;
@@ -20,7 +20,7 @@ function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.
 // ---- int32FromBytesAt ----------------------------------------------------
 
 (:test)
-function testInt32FromBytesAt_positive(logger) {
+function testInt32FromBytesAt_positive(logger as Test.Logger) as Lang.Boolean {
     // 601699000 = round(60.1699 * 1e7)
     var bytes = new [4]b;
     _packInt32(bytes, 0, 601699000);
@@ -29,7 +29,7 @@ function testInt32FromBytesAt_positive(logger) {
 }
 
 (:test)
-function testInt32FromBytesAt_negative(logger) {
+function testInt32FromBytesAt_negative(logger as Test.Logger) as Lang.Boolean {
     // -249384000 = round(-24.9384 * 1e7)  — western longitude
     var bytes = new [4]b;
     _packInt32(bytes, 0, -249384000);
@@ -38,7 +38,7 @@ function testInt32FromBytesAt_negative(logger) {
 }
 
 (:test)
-function testInt32FromBytesAt_offset(logger) {
+function testInt32FromBytesAt_offset(logger as Test.Logger) as Lang.Boolean {
     // Byte at offset 4, not 0
     var bytes = new [8]b;
     bytes[0] = 0xFF; bytes[1] = 0xFF; bytes[2] = 0xFF; bytes[3] = 0xFF;
@@ -50,7 +50,7 @@ function testInt32FromBytesAt_offset(logger) {
 // ---- decodeBinaryPoints --------------------------------------------------
 
 (:test)
-function testDecodeBinaryPoints_twoPoints(logger) {
+function testDecodeBinaryPoints_twoPoints(logger as Test.Logger) as Lang.Boolean {
     // (60.1699, 24.9384) and (60.1800, 24.9500)
     var bytes = new [16]b;
     _packInt32(bytes,  0, 601699000);
@@ -78,7 +78,7 @@ function testDecodeBinaryPoints_twoPoints(logger) {
 }
 
 (:test)
-function testDecodeBinaryPoints_negativeCoords(logger) {
+function testDecodeBinaryPoints_negativeCoords(logger as Test.Logger) as Lang.Boolean {
     // (-33.8688, 151.2093) — Sydney: negative lat, lon byte > 127
     var bytes = new [8]b;
     _packInt32(bytes, 0, -338688000);
@@ -99,20 +99,20 @@ function testDecodeBinaryPoints_negativeCoords(logger) {
 }
 
 (:test)
-function testDecodeBinaryPoints_empty(logger) {
+function testDecodeBinaryPoints_empty(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(decodeBinaryPoints(new [0]b).size(), 0);
     return true;
 }
 
 (:test)
-function testDecodeBinaryPoints_truncated(logger) {
+function testDecodeBinaryPoints_truncated(logger as Test.Logger) as Lang.Boolean {
     // 7 bytes — not enough for a complete 8-byte point
     Test.assertEqual(decodeBinaryPoints(new [7]b).size(), 0);
     return true;
 }
 
 (:test)
-function testDecodeBinaryPoints_null(logger) {
+function testDecodeBinaryPoints_null(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(decodeBinaryPoints(null).size(), 0);
     return true;
 }
@@ -120,7 +120,7 @@ function testDecodeBinaryPoints_null(logger) {
 // ---- parseCourseList -----------------------------------------------------
 
 (:test)
-function testParseCourseList_happyPath(logger) {
+function testParseCourseList_happyPath(logger as Test.Logger) as Lang.Boolean {
     var data = {
         "courses" => [
             {"id" => "111222333", "name" => "Morning Trail", "distanceKm" => 12.3},
@@ -136,19 +136,19 @@ function testParseCourseList_happyPath(logger) {
 }
 
 (:test)
-function testParseCourseList_null(logger) {
+function testParseCourseList_null(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(parseCourseList(null).size(), 0);
     return true;
 }
 
 (:test)
-function testParseCourseList_missingKey(logger) {
+function testParseCourseList_missingKey(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(parseCourseList({}).size(), 0);
     return true;
 }
 
 (:test)
-function testParseCourseList_skipsIncompleteItems(logger) {
+function testParseCourseList_skipsIncompleteItems(logger as Test.Logger) as Lang.Boolean {
     var data = {
         "courses" => [
             {"id" => "123"},
@@ -165,7 +165,7 @@ function testParseCourseList_skipsIncompleteItems(logger) {
 // ---- httpErrorString -----------------------------------------------------
 
 (:test)
-function testHttpErrorString_knownCodes(logger) {
+function testHttpErrorString_knownCodes(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(httpErrorString(-300), "BLE host timeout");
     Test.assertEqual(httpErrorString(-301), "BLE server timeout");
     Test.assertEqual(httpErrorString(-402), "Network error");
@@ -175,13 +175,13 @@ function testHttpErrorString_knownCodes(logger) {
 }
 
 (:test)
-function testHttpErrorString_positiveHttpCode(logger) {
+function testHttpErrorString_positiveHttpCode(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(httpErrorString(503), "HTTP 503");
     return true;
 }
 
 (:test)
-function testHttpErrorString_unknownNegative(logger) {
+function testHttpErrorString_unknownNegative(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqual(httpErrorString(-999), "Error -999");
     return true;
 }

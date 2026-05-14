@@ -14,20 +14,20 @@ const FOOTER_Y    = 183;
 
 class CourseListView extends WatchUi.View {
 
-    var _loader;
-    var _logger;
+    var _loader  as CourseLoader;
+    var _logger  as Logger;
     var _debugMode as Lang.Boolean;
 
     // Runtime state
-    var state        as Lang.Number;
-    var _courses     as Lang.Array?;
-    var _selectedIdx as Lang.Number;
-    var _navigatingName;
-    var _errorMsg;
-    var _errorCode;
-    var _lastDurationMs;
+    var state           as Lang.Number;
+    var _courses        as Lang.Array?;
+    var _selectedIdx    as Lang.Number;
+    var _navigatingName as Lang.String?;
+    var _errorMsg       as Lang.String?;
+    var _errorCode      as Lang.Number;
+    var _lastDurationMs as Lang.Number;
 
-    function initialize(loader, logger, debugMode) {
+    function initialize(loader as CourseLoader, logger as Logger, debugMode as Lang.Object?) {
         View.initialize();
         _loader    = loader;
         _logger    = logger;
@@ -42,57 +42,59 @@ class CourseListView extends WatchUi.View {
         _lastDurationMs = 0;
     }
 
-    function onShow() {
+    function onShow() as Void {
         _loadCourseList();
     }
 
     // ---- public actions (called by delegate) ----------------------------
 
-    function scrollUp() {
+    function scrollUp() as Void {
         if (state != STATE_LIST_READY || _courses == null || _selectedIdx == 0) { return; }
         _selectedIdx -= 1;
         WatchUi.requestUpdate();
     }
 
-    function scrollDown() {
+    function scrollDown() as Void {
         if (state != STATE_LIST_READY) { return; }
         if (_courses == null) { return; }
-        if (_selectedIdx < _courses.size() - 1) {
+        if (_selectedIdx < (_courses as Lang.Array).size() - 1) {
             _selectedIdx += 1;
             WatchUi.requestUpdate();
         }
     }
 
-    function selectCourse() {
+    function selectCourse() as Void {
         if (state != STATE_LIST_READY) { return; }
         if (_courses == null) { return; }
-        if (_courses.size() == 0) { return; }
-        var course = _courses[_selectedIdx];
+        var courses = _courses as Lang.Array;
+        if (courses.size() == 0) { return; }
+        var course = courses[_selectedIdx];
         if (!(course instanceof Lang.Dictionary)) { return; }
-        var cname = course.get("name");
+        var courseDict = course as Lang.Dictionary;
+        var cname = courseDict.get("name");
         _navigatingName = (cname != null) ? cname.toString() : "";
         state = STATE_LOADING_COURSE;
         WatchUi.requestUpdate();
-        var cid = course.get("id");
+        var cid = courseDict.get("id");
         if (cid != null) {
             _loader.fetchCoursePoints(cid.toString(), method(:onCoursePointsResponse));
         }
     }
 
-    function refresh() {
+    function refresh() as Void {
         _logger.info("Manual refresh", null);
         _loadCourseList();
         WatchUi.requestUpdate();
     }
 
-    function toggleDebug() {
+    function toggleDebug() as Void {
         _debugMode = !_debugMode;
         WatchUi.requestUpdate();
     }
 
     // ---- HTTP callbacks -------------------------------------------------
 
-    function _loadCourseList() {
+    function _loadCourseList() as Void {
         state = STATE_LOADING_LIST;
         var limit = Application.Properties.getValue("maxCourses");
         if (limit == null) { limit = 10; }
@@ -100,7 +102,7 @@ class CourseListView extends WatchUi.View {
     }
 
     // Called by CourseLoader with (code, data, durationMs)
-    function onCourseListResponse(code, data, durationMs) {
+    function onCourseListResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
         _lastDurationMs = durationMs;
         if (code == 200 && data != null) {
             var courses = parseCourseList(data);
@@ -125,7 +127,7 @@ class CourseListView extends WatchUi.View {
     }
 
     // Called by CourseLoader with (code, data, durationMs)
-    function onCoursePointsResponse(code, data, durationMs) {
+    function onCoursePointsResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
         _lastDurationMs = durationMs;
         if (code == 200 && data != null) {
             var locs = decodeBinaryPoints(data);
@@ -159,7 +161,7 @@ class CourseListView extends WatchUi.View {
 
     // ---- Drawing --------------------------------------------------------
 
-    function onUpdate(dc) {
+    function onUpdate(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.clear();
 
@@ -184,14 +186,14 @@ class CourseListView extends WatchUi.View {
         }
     }
 
-    function _drawHeader(dc) {
+    function _drawHeader(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_YELLOW, Graphics.COLOR_TRANSPARENT);
         dc.drawText(5, 4, Graphics.FONT_SMALL, "Route Loader", Graphics.TEXT_JUSTIFY_LEFT);
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawLine(0, LIST_TOP - 2, dc.getWidth(), LIST_TOP - 2);
     }
 
-    function _drawLoading(dc) {
+    function _drawLoading(dc as Graphics.Dc) as Void {
         var msg = (state == STATE_LOADING_COURSE)
             ? "Loading route..."
             : "Loading courses...";
@@ -200,17 +202,18 @@ class CourseListView extends WatchUi.View {
             Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    function _drawList(dc) {
+    function _drawList(dc as Graphics.Dc) as Void {
         if (_courses == null) { return; }
-        if (_courses.size() == 0) { return; }
+        var courses = _courses as Lang.Array;
+        if (courses.size() == 0) { return; }
         var screenW  = dc.getWidth();
         // Page containing the selected index
         var pageStart = (_selectedIdx / LIST_ROWS) * LIST_ROWS;
 
         for (var i = 0; i < LIST_ROWS; i++) {
             var idx = pageStart + i;
-            if (idx >= _courses.size()) { break; }
-            var course = _courses[idx];
+            if (idx >= courses.size()) { break; }
+            var course = courses[idx];
             var y = LIST_TOP + i * ITEM_HEIGHT;
 
             if (idx == _selectedIdx) {
@@ -222,19 +225,20 @@ class CourseListView extends WatchUi.View {
             }
 
             if (!(course instanceof Lang.Dictionary)) { continue; }
-            var name = course.get("name");
+            var courseDict = course as Lang.Dictionary;
+            var name = courseDict.get("name");
             var nameStr = (name != null) ? name.toString() : "Course " + idx;
             dc.drawText(8, y + 6, Graphics.FONT_SMALL, nameStr,
                 Graphics.TEXT_JUSTIFY_LEFT);
 
-            var dist = course.get("distanceKm");
+            var dist = courseDict.get("distanceKm");
             if (dist != null) {
                 dc.drawText(screenW - 5, y + 6, Graphics.FONT_TINY,
                     dist.toString() + "km", Graphics.TEXT_JUSTIFY_RIGHT);
             }
         }
 
-        var remaining = _courses.size() - pageStart - LIST_ROWS;
+        var remaining = courses.size() - pageStart - LIST_ROWS;
         if (remaining > 0) {
             dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
             dc.drawText(dc.getWidth() / 2, LIST_TOP + LIST_ROWS * ITEM_HEIGHT + 1,
@@ -243,7 +247,7 @@ class CourseListView extends WatchUi.View {
         }
     }
 
-    function _drawNavigating(dc) {
+    function _drawNavigating(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_TRANSPARENT);
         dc.drawText(dc.getWidth() / 2, 65, Graphics.FONT_MEDIUM,
             "Navigating:", Graphics.TEXT_JUSTIFY_CENTER);
@@ -253,7 +257,7 @@ class CourseListView extends WatchUi.View {
             Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    function _drawError(dc) {
+    function _drawError(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
         dc.drawText(dc.getWidth() / 2, 65, Graphics.FONT_SMALL,
             "Error", Graphics.TEXT_JUSTIFY_CENTER);
@@ -268,13 +272,13 @@ class CourseListView extends WatchUi.View {
         }
     }
 
-    function _drawFooter(dc, hint) {
+    function _drawFooter(dc as Graphics.Dc, hint as Lang.String) as Void {
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawText(dc.getWidth() / 2, FOOTER_Y, Graphics.FONT_TINY,
             hint, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    function _drawDebug(dc) {
+    function _drawDebug(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_YELLOW, Graphics.COLOR_TRANSPARENT);
         dc.drawText(4, 2, Graphics.FONT_TINY, "[DEBUG]  any key: exit",
             Graphics.TEXT_JUSTIFY_LEFT);
@@ -291,26 +295,23 @@ class CourseListView extends WatchUi.View {
             Graphics.TEXT_JUSTIFY_LEFT);
 
         var last = _logger.getLastEntry();
-        if (last instanceof Lang.Dictionary) {
-            var lastDict = last as Lang.Dictionary;
-            var lvl = lastDict.get("level");
-            var msg = lastDict.get("msg");
-            if (lvl != null) {
-                if (msg != null) {
-                    var msgStr = msg.toString();
-                    if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
-                    dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
-                        Graphics.TEXT_JUSTIFY_LEFT);
-                }
-            }
-            var httpStatus = lastDict.get("http_status");
-            var ms = lastDict.get("ms");
-            if (httpStatus != null) {
-                var msStr = (ms != null) ? ms.toString() : _lastDurationMs.toString();
-                dc.drawText(4, 50, Graphics.FONT_TINY,
-                    "HTTP " + httpStatus.toString() + "  " + msStr + "ms",
+        var lvl = last.get("level");
+        var msg = last.get("msg");
+        if (lvl != null) {
+            if (msg != null) {
+                var msgStr = msg.toString();
+                if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
+                dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
                     Graphics.TEXT_JUSTIFY_LEFT);
             }
+        }
+        var httpStatus = last.get("http_status");
+        var ms = last.get("ms");
+        if (httpStatus != null) {
+            var msStr = (ms != null) ? ms.toString() : _lastDurationMs.toString();
+            dc.drawText(4, 50, Graphics.FONT_TINY,
+                "HTTP " + httpStatus.toString() + "  " + msStr + "ms",
+                Graphics.TEXT_JUSTIFY_LEFT);
         }
 
         if (_errorMsg != null) {
@@ -322,7 +323,7 @@ class CourseListView extends WatchUi.View {
         if (_courses != null) {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
             dc.drawText(4, 82, Graphics.FONT_TINY,
-                "Courses: " + _courses.size() + "  sel: " + _selectedIdx,
+                "Courses: " + (_courses as Lang.Array).size() + "  sel: " + _selectedIdx,
                 Graphics.TEXT_JUSTIFY_LEFT);
         }
     }
@@ -331,14 +332,14 @@ class CourseListView extends WatchUi.View {
 
 class CourseListDelegate extends WatchUi.BehaviorDelegate {
 
-    var _view;
+    var _view as CourseListView;
 
-    function initialize(view) {
+    function initialize(view as CourseListView) {
         BehaviorDelegate.initialize();
         _view = view;
     }
 
-    function onKey(keyEvent) {
+    function onKey(keyEvent as WatchUi.KeyEvent) as Lang.Boolean {
         var key = keyEvent.getKey();
 
         // Debug overlay eats all key presses
@@ -369,7 +370,7 @@ class CourseListDelegate extends WatchUi.BehaviorDelegate {
         return false;
     }
 
-    function onBack() {
+    function onBack() as Lang.Boolean {
         if (_view._debugMode) {
             _view.toggleDebug();
             return true;

@@ -8,23 +8,23 @@ using Toybox.System;
 using Toybox.Time;
 
 class Logger {
-    var _logUrl;
-    var _lastEntry;
-    var _inflight;  // true while a cloud POST is pending
+    var _logUrl    as Lang.String;
+    var _lastEntry as Lang.Dictionary;
+    var _inflight  as Lang.Boolean;
 
-    function initialize(backendUrl) {
+    function initialize(backendUrl as Lang.String) {
         _logUrl    = backendUrl + "/api/log";
         _lastEntry = {};
         _inflight  = false;
     }
 
-    function info(msg as Lang.String, ctx as Lang.Dictionary?)  { _log("INFO",  msg, ctx); }
-    function warn(msg as Lang.String, ctx as Lang.Dictionary?)  { _log("WARN",  msg, ctx); }
-    function error(msg as Lang.String, ctx as Lang.Dictionary?) { _log("ERROR", msg, ctx); }
+    function info(msg as Lang.String, ctx as Lang.Dictionary?)  as Void { _log("INFO",  msg, ctx); }
+    function warn(msg as Lang.String, ctx as Lang.Dictionary?)  as Void { _log("WARN",  msg, ctx); }
+    function error(msg as Lang.String, ctx as Lang.Dictionary?) as Void { _log("ERROR", msg, ctx); }
 
-    function getLastEntry() { return _lastEntry; }
+    function getLastEntry() as Lang.Dictionary { return _lastEntry; }
 
-    function _log(level as Lang.String, msg as Lang.String, ctx as Lang.Dictionary?) {
+    function _log(level as Lang.String, msg as Lang.String, ctx as Lang.Dictionary?) as Void {
         System.println(level + ": " + msg);
 
         var entry = {
@@ -45,7 +45,7 @@ class Logger {
         }
     }
 
-    function _postToCloud(entry) {
+    function _postToCloud(entry as Lang.Dictionary) as Void {
         _inflight = true;
         Communications.makeWebRequest(
             _logUrl,
@@ -59,7 +59,7 @@ class Logger {
         );
     }
 
-    function _onLogResponse(code, data) {
+    function _onLogResponse(code as Lang.Number, data as Lang.Object?) as Void {
         _inflight = false;
         // fire-and-forget: ignore result
     }

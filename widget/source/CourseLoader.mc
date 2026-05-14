@@ -6,19 +6,20 @@ using Toybox.Lang;
 using Toybox.System;
 
 class CourseLoader {
-    var _baseUrl;
-    var _logger;
-    var _requestStart;  // System.getTimer() at request start
+    var _baseUrl         as Lang.String;
+    var _logger          as Logger;
+    var _requestStart    as Lang.Number;
     var _pendingCallback as Lang.Method?;
 
-    function initialize(baseUrl, logger) {
+    function initialize(baseUrl as Lang.String, logger as Logger) {
         _baseUrl         = baseUrl;
         _logger          = logger;
+        _requestStart    = 0;
         _pendingCallback = null;
     }
 
     // Calls callback.invoke(responseCode, data, durationMs)
-    function fetchCourseList(limit, callback as Lang.Method) {
+    function fetchCourseList(limit as Lang.Object?, callback as Lang.Method) as Void {
         _pendingCallback = callback;
         _requestStart    = System.getTimer();
         var url = _baseUrl + "/api/courses?limit=" + limit;
@@ -35,7 +36,7 @@ class CourseLoader {
     }
 
     // Calls callback.invoke(responseCode, data, durationMs)
-    function fetchCoursePoints(courseId as Lang.String, callback as Lang.Method) {
+    function fetchCoursePoints(courseId as Lang.String, callback as Lang.Method) as Void {
         _pendingCallback = callback;
         _requestStart    = System.getTimer();
         var url = _baseUrl + "/api/course/" + courseId;
@@ -50,20 +51,20 @@ class CourseLoader {
         );
     }
 
-    function _onCourseListRaw(code, data) {
+    function _onCourseListRaw(code as Lang.Number, data as Lang.Object?) as Void {
         var ms = System.getTimer() - _requestStart;
         _logger.info("Course list response", {"http_status" => code, "duration_ms" => ms});
         if (_pendingCallback != null) {
-            _pendingCallback.invoke(code, data, ms);
+            (_pendingCallback as Lang.Method).invoke(code, data, ms);
             _pendingCallback = null;
         }
     }
 
-    function _onCoursePointsRaw(code, data) {
+    function _onCoursePointsRaw(code as Lang.Number, data as Lang.Object?) as Void {
         var ms = System.getTimer() - _requestStart;
         _logger.info("Course points response", {"http_status" => code, "duration_ms" => ms});
         if (_pendingCallback != null) {
-            _pendingCallback.invoke(code, data, ms);
+            (_pendingCallback as Lang.Method).invoke(code, data, ms);
             _pendingCallback = null;
         }
     }
