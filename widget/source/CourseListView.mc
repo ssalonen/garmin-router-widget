@@ -1,6 +1,7 @@
 // Main widget view and input delegate.
 // View owns all state and drawing. Delegate handles button input only.
 
+using Toybox.Application;
 using Toybox.Graphics;
 using Toybox.Navigation;
 using Toybox.System;

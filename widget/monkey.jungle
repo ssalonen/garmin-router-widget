@@ -2,7 +2,3 @@ project.manifest = manifest.xml
 
 base.sourcePath = source
 base.resourcePath = resources
-base.excludeAnnotations = test
-
-test.sourcePath = source
-test.resourcePath = resources
