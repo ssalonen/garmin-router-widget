@@ -17,9 +17,9 @@ def list_courses(limit: int = Query(default=10, le=50)):
 
 
 @app.get("/api/course/{course_id}")
-def get_course(course_id: str, thin_m: int = Query(default=15, ge=5, le=500)):
+def get_course(course_id: str):
     try:
-        points = garmin.get_course_points(course_id, thin_m=thin_m)
+        points = garmin.get_course_points(course_id)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     return Response(

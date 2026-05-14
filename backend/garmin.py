@@ -1,4 +1,3 @@
-import math
 import os
 import struct
 import threading
@@ -53,14 +52,14 @@ def get_courses(limit: int = 10) -> list[dict]:
     ]
 
 
-def get_course_points(course_id: str, thin_m: int = 15) -> list[dict]:
+def get_course_points(course_id: str) -> list[dict]:
     client = _get_client()
     try:
         response = client.connectapi(
             _COURSE_PATH.format(id=course_id)
         )
         points = [{"lat": pt["latitude"], "lon": pt["longitude"]} for pt in response.get("geoPoints", [])]
-        return thin_points(points, thin_m)
+        return points
     except Exception:
         _reset_client()
         raise
@@ -75,26 +74,3 @@ def encode_points_binary(points: list[dict]) -> bytes:
         v for p in points
         for v in (round(p["lat"] * 1e7), round(p["lon"] * 1e7))
     ])
-
-
-def thin_points(points: list[dict], min_m: float = 15) -> list[dict]:
-    if not points:
-        return []
-    if len(points) == 1:
-        return list(points)
-    result = [points[0]]
-    for p in points[1:-1]:
-        last = result[-1]
-        if haversine_m(last["lat"], last["lon"], p["lat"], p["lon"]) >= min_m:
-            result.append(p)
-    result.append(points[-1])
-    return result
-
-
-def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6_371_000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
