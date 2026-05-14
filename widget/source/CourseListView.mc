@@ -16,12 +16,12 @@ class CourseListView extends WatchUi.View {
 
     var _loader;
     var _logger;
-    var _debugMode;
+    var _debugMode as Lang.Boolean;
 
     // Runtime state
-    var state;
-    var _courses;
-    var _selectedIdx;
+    var state        as Lang.Number;
+    var _courses     as Lang.Array?;
+    var _selectedIdx as Lang.Number;
     var _navigatingName;
     var _errorMsg;
     var _errorCode;
@@ -31,7 +31,7 @@ class CourseListView extends WatchUi.View {
         View.initialize();
         _loader    = loader;
         _logger    = logger;
-        _debugMode = debugMode;
+        _debugMode = (debugMode instanceof Lang.Boolean) ? (debugMode as Lang.Boolean) : false;
 
         state           = STATE_LOADING_LIST;
         _courses        = null;
@@ -55,7 +55,8 @@ class CourseListView extends WatchUi.View {
     }
 
     function scrollDown() {
-        if (state != STATE_LIST_READY || _courses == null) { return; }
+        if (state != STATE_LIST_READY) { return; }
+        if (_courses == null) { return; }
         if (_selectedIdx < _courses.size() - 1) {
             _selectedIdx += 1;
             WatchUi.requestUpdate();
@@ -63,7 +64,9 @@ class CourseListView extends WatchUi.View {
     }
 
     function selectCourse() {
-        if (state != STATE_LIST_READY || _courses == null || _courses.size() == 0) { return; }
+        if (state != STATE_LIST_READY) { return; }
+        if (_courses == null) { return; }
+        if (_courses.size() == 0) { return; }
         var course = _courses[_selectedIdx];
         if (!(course instanceof Lang.Dictionary)) { return; }
         var cname = course.get("name");
@@ -100,13 +103,14 @@ class CourseListView extends WatchUi.View {
     function onCourseListResponse(code, data, durationMs) {
         _lastDurationMs = durationMs;
         if (code == 200 && data != null) {
-            _courses = parseCourseList(data);
+            var courses = parseCourseList(data);
+            _courses = courses;
             _selectedIdx = 0;
-            if (_courses.size() > 0) {
+            if (courses.size() > 0) {
                 state = STATE_LIST_READY;
-                _logger.info("Courses loaded", {"count" => _courses.size(), "ms" => durationMs});
+                _logger.info("Courses loaded", {"count" => courses.size(), "ms" => durationMs});
             } else {
-                state = STATE_ERROR;
+                state      = STATE_ERROR;
                 _errorMsg  = "No courses found";
                 _errorCode = 0;
                 _logger.warn("Empty course list", {"ms" => durationMs});
@@ -197,7 +201,8 @@ class CourseListView extends WatchUi.View {
     }
 
     function _drawList(dc) {
-        if (_courses == null || _courses.size() == 0) { return; }
+        if (_courses == null) { return; }
+        if (_courses.size() == 0) { return; }
         var screenW  = dc.getWidth();
         // Page containing the selected index
         var pageStart = (_selectedIdx / LIST_ROWS) * LIST_ROWS;
@@ -270,7 +275,6 @@ class CourseListView extends WatchUi.View {
     }
 
     function _drawDebug(dc) {
-        var w = dc.getWidth();
         dc.setColor(Graphics.COLOR_YELLOW, Graphics.COLOR_TRANSPARENT);
         dc.drawText(4, 2, Graphics.FONT_TINY, "[DEBUG]  any key: exit",
             Graphics.TEXT_JUSTIFY_LEFT);

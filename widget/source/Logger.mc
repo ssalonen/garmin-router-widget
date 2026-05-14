@@ -17,13 +17,13 @@ class Logger {
         _inflight  = false;
     }
 
-    function info(msg, ctx)  { _log("INFO",  msg, ctx); }
-    function warn(msg, ctx)  { _log("WARN",  msg, ctx); }
-    function error(msg, ctx) { _log("ERROR", msg, ctx); }
+    function info(msg as Lang.String, ctx as Lang.Dictionary?)  { _log("INFO",  msg, ctx); }
+    function warn(msg as Lang.String, ctx as Lang.Dictionary?)  { _log("WARN",  msg, ctx); }
+    function error(msg as Lang.String, ctx as Lang.Dictionary?) { _log("ERROR", msg, ctx); }
 
     function getLastEntry() { return _lastEntry; }
 
-    function _log(level, msg, ctx) {
+    function _log(level as Lang.String, msg as Lang.String, ctx as Lang.Dictionary?) {
         System.println(level + ": " + msg);
 
         var entry = {

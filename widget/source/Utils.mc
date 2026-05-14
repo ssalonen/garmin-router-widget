@@ -11,7 +11,7 @@ const STATE_ERROR          = 4;
 
 // Parse the /api/courses JSON response into an array of course dicts.
 // Returns [] on any failure so callers never deal with null.
-function parseCourseList(data) {
+function parseCourseList(data) as Lang.Array {
     var result = [];
     if (data == null || !(data instanceof Lang.Dictionary)) {
         return result;
@@ -41,7 +41,7 @@ function parseCourseList(data) {
 // produce negative int32 values, which is exactly what we want for
 // southern latitudes and western longitudes.
 
-function int32FromBytesAt(bytes, offset) {
+function int32FromBytesAt(bytes as Lang.ByteArray, offset as Lang.Number) as Lang.Number {
     var b0 = bytes[offset];
     var b1 = bytes[offset + 1];
     var b2 = bytes[offset + 2];
@@ -49,9 +49,10 @@ function int32FromBytesAt(bytes, offset) {
     return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
 }
 
-function decodeBinaryPoints(bytes) {
+function decodeBinaryPoints(bytes) as Lang.Array {
     var result = [];
     if (bytes == null) { return result; }
+    if (!(bytes instanceof Lang.ByteArray)) { return result; }
     var n = bytes.size();
     var i = 0;
     while (i + 8 <= n) {
@@ -68,7 +69,9 @@ function decodeBinaryPoints(bytes) {
 }
 
 // Map HTTP / BLE error codes to human-readable strings for on-screen display.
-function httpErrorString(code) {
+function httpErrorString(code) as Lang.String {
+    if (code == null) { return "Unknown error"; }
+    if (!(code instanceof Lang.Number)) { return "Unknown error"; }
     if (code == -104) { return "Out of memory";     }
     if (code == -300) { return "BLE host timeout";  }
     if (code == -301) { return "BLE server timeout";}

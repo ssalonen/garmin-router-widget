@@ -8,7 +8,7 @@ using Toybox.Test;
 // Tagged (:test) so it is excluded from production builds.
 
 (:test)
-function _packInt32(bytes, offset, val) {
+function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.Number) {
     bytes[offset]     = (val >> 24) & 0xFF;
     bytes[offset + 1] = (val >> 16) & 0xFF;
     bytes[offset + 2] = (val >> 8)  & 0xFF;
@@ -59,7 +59,7 @@ function testDecodeBinaryPoints_twoPoints(logger) {
     var locs = decodeBinaryPoints(bytes);
     Test.assertEqual(locs.size(), 2);
 
-    var coords = locs[0].toDegrees();  // [lat, lon]
+    var coords = (locs[0] as Position.Location).toDegrees();  // [lat, lon]
     var d = coords[0].toFloat() - 60.1699;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
@@ -68,7 +68,7 @@ function testDecodeBinaryPoints_twoPoints(logger) {
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
 
-    coords = locs[1].toDegrees();
+    coords = (locs[1] as Position.Location).toDegrees();
     d = coords[0].toFloat() - 60.1800;
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
@@ -85,7 +85,7 @@ function testDecodeBinaryPoints_negativeCoords(logger) {
     var locs = decodeBinaryPoints(bytes);
     Test.assertEqual(locs.size(), 1);
 
-    var coords = locs[0].toDegrees();
+    var coords = (locs[0] as Position.Location).toDegrees();
     var d = coords[0].toFloat() - (-33.8688);
     if (d < 0) { d = -d; }
     Test.assert(d < 0.0001);
@@ -127,9 +127,9 @@ function testParseCourseList_happyPath(logger) {
     };
     var courses = parseCourseList(data);
     Test.assertEqual(courses.size(), 2);
-    Test.assertEqual(courses[0].get("id"),   "111222333");
-    Test.assertEqual(courses[0].get("name"), "Morning Trail");
-    Test.assertEqual(courses[1].get("id"),   "444555666");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("id"),   "111222333");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("name"), "Morning Trail");
+    Test.assertEqual((courses[1] as Lang.Dictionary).get("id"),   "444555666");
     return true;
 }
 
@@ -156,7 +156,7 @@ function testParseCourseList_skipsIncompleteItems(logger) {
     };
     var courses = parseCourseList(data);
     Test.assertEqual(courses.size(), 1);
-    Test.assertEqual(courses[0].get("name"), "Good Course");
+    Test.assertEqual((courses[0] as Lang.Dictionary).get("name"), "Good Course");
     return true;
 }
 
