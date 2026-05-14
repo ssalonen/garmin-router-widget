@@ -16,3 +16,4 @@ widget/bin/*.iq
 
 # macOS
 .DS_Store
+widget/bin/
