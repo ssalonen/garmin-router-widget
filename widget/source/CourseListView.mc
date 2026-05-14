@@ -96,7 +96,8 @@ class CourseListView extends WatchUi.View {
 
     function _loadCourseList() as Void {
         state = STATE_LOADING_LIST;
-        var limit = Application.Properties.getValue("maxCourses");
+        var limitProp = Application.Properties.getValue("maxCourses");
+        var limit = (limitProp != null) ? limitProp.toString().toNumber() : 10;
         if (limit == null) { limit = 10; }
         _loader.fetchCourseList(limit, method(:onCourseListResponse));
     }

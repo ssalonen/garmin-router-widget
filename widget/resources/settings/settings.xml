@@ -3,6 +3,11 @@
         <settingConfig type="boolean"/>
     </setting>
     <setting propertyKey="@Properties.maxCourses" title="Max Courses">
-        <settingConfig type="number" min="3" max="20"/>
+        <settingConfig type="list">
+            <listEntry value="5">5</listEntry>
+            <listEntry value="10">10</listEntry>
+            <listEntry value="15">15</listEntry>
+            <listEntry value="20">20</listEntry>
+        </settingConfig>
     </setting>
 </settings>
