@@ -5,7 +5,6 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import Response
 
 import garmin
-import storage
 
 app = FastAPI(title="Garmin Route Loader Backend")
 
@@ -39,17 +38,3 @@ def get_course(course_id: str, _: None = Security(_require_api_key)):
         content=garmin.encode_points_binary(points),
         media_type="application/octet-stream",
     )
-
-
-@app.post("/api/log")
-def receive_log(payload: dict):
-    storage.save_log(payload)
-    return {"ok": True}
-
-
-@app.get("/api/logs")
-def get_logs(
-    n: int = Query(default=50, le=500),
-    level: str | None = Query(default=None),
-):
-    return {"logs": storage.get_recent_logs(n=n, level_filter=level)}
