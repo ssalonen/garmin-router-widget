@@ -2,7 +2,6 @@ import math
 import os
 import struct
 import threading
-import xml.etree.ElementTree as ET
 
 from garminconnect import Garmin
 
@@ -10,8 +9,8 @@ _client: Garmin | None = None
 _lock = threading.Lock()
 
 # Garmin Connect API endpoints (unofficial; may change without notice)
-_COURSE_LIST_PATH = "/course-service/course/"
-_COURSE_GPX_PATH = "/course-service/course/{id}/gpx"
+_COURSE_LIST_PATH = "/course-service/course/favorites/"
+_COURSE_PATH = "/course-service/course/{id}"
 
 
 def _get_client() -> Garmin:
@@ -41,48 +40,30 @@ def get_courses(limit: int = 10) -> list[dict]:
     except Exception:
         _reset_client()
         raise
-
-    # API may return "courseList" or "courses" depending on version
-    raw = data.get("courseList", data.get("courses", []))
     return [
         {
-            "id": str(c["id"]),
-            "name": c.get("courseName", c.get("name", f"Course {c['id']}")),
+            "id": str(c["courseId"]),
+            "name": c.get("courseName", c.get("name", f"Course {c['courseId']}")),
             "distanceKm": round(
-                c.get("totalDistance", c.get("distance", 0)) / 1000, 2
+                c.get("distanceInMeters", c.get("totalDistance", c.get("distance", 0))) / 1000, 2
             ),
         }
-        for c in raw
-        if c.get("id")
+        for c in data
+        if c.get("courseId")
     ]
 
 
 def get_course_points(course_id: str, thin_m: int = 15) -> list[dict]:
     client = _get_client()
     try:
-        response = client.garth.get(
-            "connect", _COURSE_GPX_PATH.format(id=course_id)
+        response = client.connectapi(
+            _COURSE_PATH.format(id=course_id)
         )
-        gpx_bytes = response.content
+        points = [{"lat": pt["latitude"], "lon": pt["longitude"]} for pt in response.get("geoPoints", [])]
+        return thin_points(points, thin_m)
     except Exception:
         _reset_client()
         raise
-    return thin_points(_parse_gpx(gpx_bytes), thin_m)
-
-
-def _parse_gpx(gpx_bytes: bytes) -> list[dict]:
-    # Only extract lat/lon — Navigation.startNavigation() has no use for elevation
-    # or timestamps, and omitting them keeps the JSON payload smaller.
-    ns = {"gpx": "http://www.topografix.com/GPX/1/1"}
-    root = ET.fromstring(gpx_bytes)
-    points = []
-    for trkpt in root.findall(".//gpx:trkpt", ns):
-        points.append({
-            "lat": float(trkpt.attrib["lat"]),
-            "lon": float(trkpt.attrib["lon"]),
-        })
-    return points
-
 
 def encode_points_binary(points: list[dict]) -> bytes:
     """Pack lat/lon pairs as big-endian int32 scaled by 1e7.
