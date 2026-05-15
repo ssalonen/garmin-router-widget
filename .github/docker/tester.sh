@@ -29,6 +29,22 @@ sleep 1
 simulator &
 SIM_PID=$!
 trap "kill $SIM_PID $XVFB_PID 2>/dev/null; exit" INT TERM EXIT
-sleep 5   # wait for simulator to be ready
+
+# Wait up to 20s for the simulator to create its communication socket.
+echo "Waiting for simulator socket..."
+for i in $(seq 1 20); do
+    if ls /tmp/.ciq* /tmp/apple* 2>/dev/null | grep -q .; then
+        echo "Simulator socket found after ${i}s"
+        break
+    fi
+    # Also check if the simulator process already died
+    if ! kill -0 "$SIM_PID" 2>/dev/null; then
+        echo "ERROR: simulator exited prematurely"
+        exit 1
+    fi
+    sleep 1
+done
+echo "Simulator process status: $(kill -0 $SIM_PID 2>/dev/null && echo running || echo dead)"
+echo "Socket files: $(ls /tmp/.ciq* /tmp/apple* 2>/dev/null || echo none)"
 
 monkeydo /tmp/unit-test.prg "$DEVICE"
