@@ -33,7 +33,9 @@ mkdir -p "$RESULTS"
 echo "[e2e] SDK devices: $(ls /root/.Garmin/ConnectIQ/Devices 2>/dev/null | tr '\n' ' ')"
 echo "[e2e] Device profile contents: $(ls /root/.Garmin/ConnectIQ/Devices/${DEVICE}/ 2>/dev/null | tr '\n' ' ')"
 echo "[e2e] CONNECTIQ_HOME=${CONNECTIQ_HOME:-unset}"
-echo "[e2e] SDK share: $(ls ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/ 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] SDK share/simulator: $(ls ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/simulator/ 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] simulator.json: $(cat /root/.Garmin/ConnectIQ/Devices/${DEVICE}/simulator.json 2>/dev/null)"
+echo "[e2e] Font files in SDK: $(find ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/simulator -name '*.fnt' -o -name '*.ttf' -o -name '*.otf' 2>/dev/null | tr '\n' ' ')"
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
