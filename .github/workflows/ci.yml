@@ -26,28 +26,78 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get cache key (14-day window)
+      - name: Get cache period key (14-day window)
         id: period
         run: echo "key=$(( $(date +%s) / 86400 / 14 ))" >> $GITHUB_OUTPUT
 
-      - name: Cache Connect IQ Docker image
-        id: cache-ciq
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if custom Connect IQ builder image is available
+        id: builder
+        run: |
+          if docker manifest inspect ghcr.io/${{ github.repository }}/connectiq-builder:latest 2>/dev/null; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      # --- Custom builder image path (after sdk-update.yml has been run) ---
+
+      - name: Cache custom builder image
+        if: steps.builder.outputs.available == 'true'
+        id: cache-builder
+        uses: actions/cache@v4
+        with:
+          path: /tmp/connectiq-builder.tar
+          key: connectiq-builder-${{ steps.period.outputs.key }}
+
+      - name: Pull and save custom builder image (cache miss)
+        if: steps.builder.outputs.available == 'true' && steps.cache-builder.outputs.cache-hit != 'true'
+        run: |
+          docker pull ghcr.io/${{ github.repository }}/connectiq-builder:latest
+          docker save ghcr.io/${{ github.repository }}/connectiq-builder:latest \
+            -o /tmp/connectiq-builder.tar
+
+      - name: Load custom builder image (cache hit)
+        if: steps.builder.outputs.available == 'true' && steps.cache-builder.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/connectiq-builder.tar
+
+      - name: Run Monkey C unit tests
+        if: steps.builder.outputs.available == 'true'
+        run: |
+          docker run --rm \
+            -v "$PWD/widget:/app" \
+            --workdir /app \
+            ghcr.io/${{ github.repository }}/connectiq-builder:latest \
+            edge530
+
+      # --- Fallback: matco image (until sdk-update.yml has been run once) ---
+
+      - name: Cache matco Connect IQ image (fallback)
+        if: steps.builder.outputs.available != 'true'
+        id: cache-matco
         uses: actions/cache@v4
         with:
           path: /tmp/connectiq.tar
-          key: connectiq-${{ steps.period.outputs.key }}
+          key: connectiq-matco-${{ steps.period.outputs.key }}
 
-      - name: Pull and save image (cache miss)
-        if: steps.cache-ciq.outputs.cache-hit != 'true'
+      - name: Pull and save matco image (fallback, cache miss)
+        if: steps.builder.outputs.available != 'true' && steps.cache-matco.outputs.cache-hit != 'true'
         run: |
           docker pull ghcr.io/matco/connectiq-tester:latest
           docker save ghcr.io/matco/connectiq-tester:latest -o /tmp/connectiq.tar
 
-      - name: Load image (cache hit)
-        if: steps.cache-ciq.outputs.cache-hit == 'true'
+      - name: Load matco image (fallback, cache hit)
+        if: steps.builder.outputs.available != 'true' && steps.cache-matco.outputs.cache-hit == 'true'
         run: docker load -i /tmp/connectiq.tar
 
-      - name: Run Monkey C unit tests
+      - name: Run Monkey C unit tests (matco fallback)
+        if: steps.builder.outputs.available != 'true'
         # To run locally (shows full output):
         #   docker run --rm -v "$PWD/widget:/app" --workdir /app \
         #     --entrypoint tester.sh ghcr.io/matco/connectiq-tester:latest \

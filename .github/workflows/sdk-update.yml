@@ -1,0 +1,121 @@
+name: Update Connect IQ SDK
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly, Monday 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: 'SDK version to pin (leave empty for latest)'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/connectiq-builder
+
+jobs:
+  sdk:
+    name: Download SDK and publish builder image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      sdk_version: ${{ steps.resolve.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install connect-iq-sdk-manager-cli
+        run: |
+          DEB_URL=$(curl -fsSL https://api.github.com/repos/lindell/connect-iq-sdk-manager-cli/releases/latest \
+            | jq -r '.assets[] | select(.name | endswith("linux_amd64.deb")) | .browser_download_url')
+          curl -fsSL "$DEB_URL" -o /tmp/ciq-sdk-manager.deb
+          sudo dpkg -i /tmp/ciq-sdk-manager.deb
+
+      - name: Accept Garmin SDK agreement
+        env:
+          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: connect-iq-sdk-manager agreement accept
+
+      - name: Resolve SDK version
+        id: resolve
+        env:
+          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          if [ -n "${{ inputs.sdk_version }}" ]; then
+            VERSION="${{ inputs.sdk_version }}"
+          else
+            VERSION=$(connect-iq-sdk-manager sdk list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Resolved SDK version: $VERSION"
+
+      - name: Restore SDK from cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.Garmin/ConnectIQ
+          key: connectiq-sdk-${{ steps.resolve.outputs.version }}
+
+      - name: Download SDK and device definitions
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          connect-iq-sdk-manager sdk set ${{ steps.resolve.outputs.version }}
+          connect-iq-sdk-manager device download --manifest=widget/manifest.xml
+
+      - name: Save SDK to cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.Garmin/ConnectIQ
+          key: connectiq-sdk-${{ steps.resolve.outputs.version }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if versioned Docker image already exists
+        id: image-check
+        run: |
+          if docker manifest inspect \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.resolve.outputs.version }} \
+            2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare Docker build context
+        if: steps.image-check.outputs.exists != 'true'
+        run: |
+          SDK_PATH=$(connect-iq-sdk-manager sdk current-path)
+          cp -r "$SDK_PATH" .github/docker/sdk
+          DEVICES_DIR="${HOME}/.Garmin/ConnectIQ/Devices"
+          if [ -d "$DEVICES_DIR" ]; then
+            cp -r "$DEVICES_DIR" .github/docker/devices
+          else
+            mkdir -p .github/docker/devices
+          fi
+
+      - name: Build and push Docker image
+        if: steps.image-check.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .github/docker
+          file: .github/docker/connectiq-builder.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.resolve.outputs.version }}
+          build-args: SDK_VERSION=${{ steps.resolve.outputs.version }}
