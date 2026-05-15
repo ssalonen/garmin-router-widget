@@ -6,6 +6,10 @@ using Toybox.Lang;
 using Toybox.Position;
 using Toybox.Test;
 
+// Sentinel checked by CourseListView.onUpdate via `$ has :_IS_TEST_BUILD` to
+// skip all Graphics calls (which crash in test-mode simulator).
+var _IS_TEST_BUILD = true;
+
 // ---- Helper: pack an int32 big-endian into a ByteArray at offset --------
 
 function _packInt32(bytes as Lang.ByteArray, offset as Lang.Number, val as Lang.Number) as Void {
