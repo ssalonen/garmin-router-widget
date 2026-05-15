@@ -30,32 +30,21 @@ XVFB_PID=""
 mkdir -p "$RESULTS"
 
 # ── SDK device inventory (diagnostic) ───────────────────────────────────────
-# Locate where this image stores CIQ device definitions and list them.
-echo "[e2e] SDK device inventory (broad search):"
-# 1. Check well-known paths first
-for d in \
-    /root/.Garmin/ConnectIQ/Devices \
-    /home/user/.Garmin/ConnectIQ/Devices \
-    "${CONNECT_IQ_HOME:-}/Devices" \
-    /connectiq/Devices \
-    /opt/connectiq/Devices \
-    /usr/share/connectiq/Devices
-do
-    if [ -d "$d" ]; then
-        echo "[e2e]   FOUND $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
-    fi
-done
-# 2. Fall back to a filesystem search if nothing found above
-if ! find /root /home /opt /connectiq /usr/share -maxdepth 6 -name Devices -type d 2>/dev/null | grep -q .; then
-    echo "[e2e]   no Devices dir in well-known roots; broader find:"
-    find / -maxdepth 8 -name Devices -type d 2>/dev/null | head -5 | while read -r d; do
-        echo "[e2e]     $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
-    done
-else
-    find /root /home /opt /connectiq /usr/share -maxdepth 6 -name Devices -type d 2>/dev/null | while read -r d; do
-        echo "[e2e]   $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
-    done
+echo "[e2e] SDK device inventory:"
+# monkeyc location → SDK root
+MONKEYC_BIN=$(command -v monkeyc 2>/dev/null || true)
+echo "[e2e]   monkeyc: ${MONKEYC_BIN:-not found}"
+if [ -n "$MONKEYC_BIN" ]; then
+    SDK_BIN=$(dirname "$(readlink -f "$MONKEYC_BIN")")
+    SDK_ROOT=$(dirname "$SDK_BIN")
+    echo "[e2e]   SDK root: $SDK_ROOT"
+    echo "[e2e]   SDK root contents: $(ls "$SDK_ROOT" 2>/dev/null | tr '\n' ' ')"
 fi
+# Find device definitions by locating compiler.json files (one per device)
+echo "[e2e]   compiler.json locations (first 10):"
+find / -maxdepth 10 -name compiler.json 2>/dev/null | head -10 | while read -r f; do
+    echo "[e2e]     $f"
+done
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
