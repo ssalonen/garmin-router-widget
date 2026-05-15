@@ -12,6 +12,9 @@ if [ -z "$CERT" ] || [ ! -f "$CERT" ]; then
 fi
 
 echo "Compiling unit tests for ${DEVICE}..."
+echo "[diag] CONNECTIQ_HOME=${CONNECTIQ_HOME:-unset}"
+echo "[diag] Device dir: $(ls /root/.Garmin/ConnectIQ/Devices/${DEVICE}/ 2>/dev/null | tr '\n' ' ')"
+echo "[diag] SDK share: $(ls ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/ 2>/dev/null | tr '\n' ' ')"
 monkeyc \
     --warn \
     -f monkey.jungle \
