@@ -23,8 +23,12 @@ monkeyc \
 echo "Running unit tests..."
 Xvfb :99 -screen 0 1024x768x24 &
 XVFB_PID=$!
-trap "kill $XVFB_PID 2>/dev/null; exit" INT TERM EXIT
 export DISPLAY=:99
 sleep 1
+
+simulator &
+SIM_PID=$!
+trap "kill $SIM_PID $XVFB_PID 2>/dev/null; exit" INT TERM EXIT
+sleep 5   # wait for simulator to be ready
 
 monkeydo /tmp/unit-test.prg "$DEVICE"
