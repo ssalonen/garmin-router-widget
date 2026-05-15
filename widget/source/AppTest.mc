@@ -8,7 +8,10 @@ using Toybox.Test;
 
 // Sentinel checked by CourseListView.onUpdate via `$ has :_IS_TEST_BUILD` to
 // skip all Graphics calls (which crash in test-mode simulator).
-var _IS_TEST_BUILD = true;
+// The (:test) annotation ensures it is compiled only when -t is passed,
+// so app-mode builds never see it and onUpdate renders normally.
+(:test)
+var _IS_TEST_BUILD as Lang.Boolean = true;
 
 // ---- Helper: pack an int32 big-endian into a ByteArray at offset --------
 
