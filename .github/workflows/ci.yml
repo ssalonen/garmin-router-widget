@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  CIQ_IMAGE: ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:9.1.0
+
 jobs:
   backend:
     name: Backend tests (Python)
@@ -20,7 +23,7 @@ jobs:
         working-directory: backend
 
   widget:
-    name: Widget tests (Monkey C)
+    name: Widget unit tests (Monkey C)
     runs-on: ubuntu-latest
 
     steps:
@@ -47,22 +50,81 @@ jobs:
       - name: Pull and save builder image (cache miss)
         if: steps.cache-builder.outputs.cache-hit != 'true'
         run: |
-          docker pull ghcr.io/${{ github.repository }}/connectiq-builder:latest
-          docker save ghcr.io/${{ github.repository }}/connectiq-builder:latest \
-            -o /tmp/connectiq-builder.tar
+          docker pull ${{ env.CIQ_IMAGE }}
+          docker save ${{ env.CIQ_IMAGE }} -o /tmp/connectiq-builder.tar
 
       - name: Load builder image (cache hit)
         if: steps.cache-builder.outputs.cache-hit == 'true'
         run: docker load -i /tmp/connectiq-builder.tar
 
       - name: Run Monkey C unit tests
-        # To run locally (shows full output):
+        # To run locally:
         #   docker run --rm -v "$PWD/widget:/app" --workdir /app \
-        #     ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:latest \
+        #     ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:9.1.0 \
         #     edge530
         run: |
           docker run --rm \
             -v "$PWD/widget:/app" \
             --workdir /app \
-            ghcr.io/${{ github.repository }}/connectiq-builder:latest \
+            ${{ env.CIQ_IMAGE }} \
             edge530
+
+  e2e:
+    name: E2E screenshot tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get cache period key (14-day window)
+        id: period
+        run: echo "key=$(( $(date +%s) / 86400 / 14 ))" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Connect IQ builder image
+        id: cache-builder
+        uses: actions/cache@v4
+        with:
+          path: /tmp/connectiq-builder.tar
+          key: connectiq-builder-${{ steps.period.outputs.key }}
+
+      - name: Pull and save builder image (cache miss)
+        if: steps.cache-builder.outputs.cache-hit != 'true'
+        run: |
+          docker pull ${{ env.CIQ_IMAGE }}
+          docker save ${{ env.CIQ_IMAGE }} -o /tmp/connectiq-builder.tar
+
+      - name: Load builder image (cache hit)
+        if: steps.cache-builder.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/connectiq-builder.tar
+
+      - name: Run E2E tests with mock API server
+        # Mounts widget/ at /app inside the container.
+        # e2e.sh starts mock_server.py (Python 3 stdlib only), patches
+        # backendUrl to http://127.0.0.1:8765 in a temp copy of the source,
+        # compiles the widget, then exercises three simulator scenarios:
+        #   A) normal — courses list + scroll + navigation to route
+        #   B) error  — HTTP 500 → error state
+        #   C) empty  — empty JSON list → "No courses found" error state
+        # Screenshots are written to widget/test-results/e2e/ via the volume mount.
+        run: |
+          docker run --rm \
+            -v "$PWD/widget:/app" \
+            --workdir /app \
+            --entrypoint /bin/bash \
+            ${{ env.CIQ_IMAGE }} \
+            /app/test/e2e.sh edge530 ""
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-${{ github.run_number }}
+          path: widget/test-results/e2e/
+          if-no-files-found: warn
