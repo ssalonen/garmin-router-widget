@@ -36,7 +36,7 @@ jobs:
           GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
         run: |
-          connect-iq-sdk-manager agreement accept --acceptance-hash=${{ secrets.CONNECT_IQ_AGREEMENT_HASH }}
+          connect-iq-sdk-manager agreement accept --agreement-hash=${{ secrets.CONNECT_IQ_AGREEMENT_HASH }}
           connect-iq-sdk-manager login
 
       - name: Resolve SDK version
