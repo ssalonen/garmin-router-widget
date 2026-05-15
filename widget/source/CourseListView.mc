@@ -5,7 +5,6 @@ using Toybox.Application;
 using Toybox.Graphics;
 using Toybox.Lang;
 using Toybox.System;
-using Toybox.Test;
 using Toybox.WatchUi;
 
 const ITEM_HEIGHT = 30;
@@ -162,8 +161,11 @@ class CourseListView extends WatchUi.View {
 
     // ---- Drawing --------------------------------------------------------
 
+    // Test build: skip all rendering — tests cover pure utility functions only.
+    (:test)
+    function onUpdate(dc as Graphics.Dc) as Void {}
+
     function onUpdate(dc as Graphics.Dc) as Void {
-        if (Test.isTestMode()) { return; }
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.clear();
 
