@@ -48,7 +48,7 @@ done
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
     echo "[e2e] python3 not found — installing..."
-    apt-get install -y --quiet python3 >/dev/null
+    apt-get update -qq && apt-get install -y --quiet python3 >/dev/null
 fi
 
 echo "[e2e] ── Setup ──────────────────────────────────────────────────────"
