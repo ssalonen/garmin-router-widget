@@ -29,11 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install connect-iq-sdk-manager-cli
-        run: |
-          DEB_URL=$(curl -fsSL https://api.github.com/repos/lindell/connect-iq-sdk-manager-cli/releases/latest \
-            | jq -r '.assets[] | select(.name | endswith("linux_amd64.deb")) | .browser_download_url')
-          curl -fsSL "$DEB_URL" -o /tmp/ciq-sdk-manager.deb
-          sudo dpkg -i /tmp/ciq-sdk-manager.deb
+        run: curl -fsSL https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
 
       - name: Accept Garmin SDK agreement
         env:
