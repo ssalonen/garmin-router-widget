@@ -31,6 +31,9 @@ mkdir -p "$RESULTS"
 
 # ── SDK device inventory (diagnostic) ───────────────────────────────────────
 echo "[e2e] SDK devices: $(ls /root/.Garmin/ConnectIQ/Devices 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] Device profile contents: $(ls /root/.Garmin/ConnectIQ/Devices/${DEVICE}/ 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] CONNECTIQ_HOME=${CONNECTIQ_HOME:-unset}"
+echo "[e2e] SDK share: $(ls ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/ 2>/dev/null | tr '\n' ' ')"
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
