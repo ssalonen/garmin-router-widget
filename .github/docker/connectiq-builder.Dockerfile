@@ -24,6 +24,7 @@ COPY sdk/ /opt/connectiq-sdk/
 COPY tester.sh /usr/local/bin/tester.sh
 
 ENV PATH="/opt/connectiq-sdk/bin:${PATH}"
+ENV CONNECTIQ_HOME=/opt/connectiq-sdk
 
 # Device profiles must live at the path the SDK tools expect.
 RUN mkdir -p /root/.Garmin/ConnectIQ/Devices
