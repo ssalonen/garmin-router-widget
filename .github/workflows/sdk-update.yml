@@ -9,6 +9,11 @@ on:
         description: 'SDK version to pin (leave empty for latest)'
         required: false
         type: string
+      force_rebuild:
+        description: 'Rebuild and push the image even if the versioned tag already exists'
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -95,7 +100,7 @@ jobs:
           fi
 
       - name: Prepare Docker build context
-        if: steps.image-check.outputs.exists != 'true'
+        if: steps.image-check.outputs.exists != 'true' || inputs.force_rebuild
         run: |
           SDK_PATH=$(connect-iq-sdk-manager sdk current-path)
           cp -r "$SDK_PATH" .github/docker/sdk
@@ -107,7 +112,7 @@ jobs:
           fi
 
       - name: Build and push Docker image
-        if: steps.image-check.outputs.exists != 'true'
+        if: steps.image-check.outputs.exists != 'true' || inputs.force_rebuild
         uses: docker/build-push-action@v6
         with:
           context: .github/docker
