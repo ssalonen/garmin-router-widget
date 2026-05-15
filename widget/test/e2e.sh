@@ -83,11 +83,25 @@ echo "[e2e] Compiled OK → test-results/build/app.prg"
 # ── Start CIQ Simulator ──────────────────────────────────────────────────────
 DISPLAY=$DISP simulator &
 SIM_PID=$!
-sleep 3   # wait for simulator to be ready
+sleep 5   # wait for simulator to be ready
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 win() {
-    DISPLAY=$DISP xdotool search --name "CIQ Simulator" 2>/dev/null | head -1 || true
+    # Pick the largest window named "CIQ Simulator" — avoids the menu-bar
+    # sub-window which xdotool often lists first.
+    local best_wid="" best_area=0
+    while IFS= read -r wid; do
+        local geom w h area
+        geom=$(DISPLAY=$DISP xdotool getwindowgeometry "$wid" 2>/dev/null) || continue
+        w=$(echo "$geom" | grep -oP 'Geometry: \K[0-9]+')
+        h=$(echo "$geom" | grep -oP 'x\K[0-9]+')
+        area=$(( ${w:-0} * ${h:-0} ))
+        if [ "$area" -gt "$best_area" ]; then
+            best_area=$area
+            best_wid=$wid
+        fi
+    done < <(DISPLAY=$DISP xdotool search --name "CIQ Simulator" 2>/dev/null)
+    echo "$best_wid"
 }
 
 activate() {
@@ -135,7 +149,7 @@ load_app() {
 
 wait_for_http() {
     # Allow time for: app init + Communications.makeWebRequest + server response + onUpdate
-    sleep 8
+    sleep 15
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -156,7 +170,7 @@ screenshot "02_course_list_scrolled"
 
 # Select the highlighted course (START/ENTER key)
 press Return
-sleep 6   # wait for course-points HTTP response
+sleep 15   # wait for course-points HTTP response
 screenshot "03_navigating"
 
 # ════════════════════════════════════════════════════════════════════════════
