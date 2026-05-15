@@ -30,20 +30,32 @@ XVFB_PID=""
 mkdir -p "$RESULTS"
 
 # ── SDK device inventory (diagnostic) ───────────────────────────────────────
-# Print whichever directory the SDK stores device files in.  Useful for
-# debugging "Invalid device id" errors when the image ships a limited set.
-echo "[e2e] SDK device inventory:"
+# Locate where this image stores CIQ device definitions and list them.
+echo "[e2e] SDK device inventory (broad search):"
+# 1. Check well-known paths first
 for d in \
     /root/.Garmin/ConnectIQ/Devices \
-    /root/.Garmin/ConnectIQ \
-    "${CONNECT_IQ_HOME:-/connectiq}/Devices" \
-    "${CONNECT_IQ_HOME:-/connectiq}"
+    /home/user/.Garmin/ConnectIQ/Devices \
+    "${CONNECT_IQ_HOME:-}/Devices" \
+    /connectiq/Devices \
+    /opt/connectiq/Devices \
+    /usr/share/connectiq/Devices
 do
     if [ -d "$d" ]; then
-        DEVS=$(ls "$d" 2>/dev/null | tr '\n' ' ')
-        echo "[e2e]   $d: $DEVS"
+        echo "[e2e]   FOUND $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
     fi
 done
+# 2. Fall back to a filesystem search if nothing found above
+if ! find /root /home /opt /connectiq /usr/share -maxdepth 6 -name Devices -type d 2>/dev/null | grep -q .; then
+    echo "[e2e]   no Devices dir in well-known roots; broader find:"
+    find / -maxdepth 8 -name Devices -type d 2>/dev/null | head -5 | while read -r d; do
+        echo "[e2e]     $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
+    done
+else
+    find /root /home /opt /connectiq /usr/share -maxdepth 6 -name Devices -type d 2>/dev/null | while read -r d; do
+        echo "[e2e]   $d: $(ls "$d" 2>/dev/null | tr '\n' ' ')"
+    done
+fi
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
