@@ -12,11 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY sdk/ /opt/connectiq-sdk/
-COPY devices/ /opt/connectiq-sdk/devices/
 COPY tester.sh /usr/local/bin/tester.sh
 
-ENV CONNECTIQ_HOME=/opt/connectiq-sdk
 ENV PATH="/opt/connectiq-sdk/bin:${PATH}"
+
+# Device profiles must live at the path the SDK tools expect.
+RUN mkdir -p /root/.Garmin/ConnectIQ/Devices
+COPY devices/ /root/.Garmin/ConnectIQ/Devices/
 
 RUN chmod +x /opt/connectiq-sdk/bin/* /usr/local/bin/tester.sh
 

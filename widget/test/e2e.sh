@@ -30,21 +30,7 @@ XVFB_PID=""
 mkdir -p "$RESULTS"
 
 # ── SDK device inventory (diagnostic) ───────────────────────────────────────
-echo "[e2e] SDK device inventory:"
-# monkeyc location → SDK root
-MONKEYC_BIN=$(command -v monkeyc 2>/dev/null || true)
-echo "[e2e]   monkeyc: ${MONKEYC_BIN:-not found}"
-if [ -n "$MONKEYC_BIN" ]; then
-    SDK_BIN=$(dirname "$(readlink -f "$MONKEYC_BIN")")
-    SDK_ROOT=$(dirname "$SDK_BIN")
-    echo "[e2e]   SDK root: $SDK_ROOT"
-    echo "[e2e]   SDK root contents: $(ls "$SDK_ROOT" 2>/dev/null | tr '\n' ' ')"
-fi
-# Find device definitions by locating compiler.json files (one per device)
-echo "[e2e]   compiler.json locations (first 10):"
-find / -maxdepth 10 -name compiler.json 2>/dev/null | head -10 | while read -r f; do
-    echo "[e2e]     $f"
-done
+echo "[e2e] SDK devices: $(ls /root/.Garmin/ConnectIQ/Devices 2>/dev/null | tr '\n' ' ')"
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
