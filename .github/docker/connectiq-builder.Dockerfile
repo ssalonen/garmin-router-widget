@@ -5,13 +5,16 @@ LABEL org.opencontainers.image.description="Connect IQ SDK ${SDK_VERSION} builde
 LABEL org.opencontainers.image.source="https://github.com/ssalonen/garmin-router-widget"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository universe \
+    && apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     libgl1 \
     libgtk-3-0 \
     libsecret-1-0 \
     libusb-1.0-0 \
     libudev1 \
-    libwebkit2gtk-4.0-0 \
+    libwebkit2gtk-4.0-37 \
     xdotool \
     imagemagick \
     openssl \
