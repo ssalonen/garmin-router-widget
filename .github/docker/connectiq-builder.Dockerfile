@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsecret-1-0 \
     libusb-1.0-0 \
     libudev1 \
+    libwebkit2gtk-4.0-0 \
     xdotool \
     imagemagick \
     openssl \
