@@ -31,13 +31,13 @@ jobs:
       - name: Install connect-iq-sdk-manager-cli
         run: curl -fsSL https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
 
-      - name: Log in to Garmin and accept SDK agreement
+      - name: Accept SDK agreement and log in to Garmin
         env:
           GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
         run: |
+          connect-iq-sdk-manager agreement accept --acceptance-hash=${{ secrets.CONNECT_IQ_AGREEMENT_HASH }}
           connect-iq-sdk-manager login
-          connect-iq-sdk-manager agreement accept
 
       - name: Resolve SDK version
         id: resolve
