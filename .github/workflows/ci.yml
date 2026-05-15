@@ -26,33 +26,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get cache key (14-day window)
+      - name: Get cache period key (14-day window)
         id: period
         run: echo "key=$(( $(date +%s) / 86400 / 14 ))" >> $GITHUB_OUTPUT
 
-      - name: Cache Connect IQ Docker image
-        id: cache-ciq
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Connect IQ builder image
+        id: cache-builder
         uses: actions/cache@v4
         with:
-          path: /tmp/connectiq.tar
-          key: connectiq-${{ steps.period.outputs.key }}
+          path: /tmp/connectiq-builder.tar
+          key: connectiq-builder-${{ steps.period.outputs.key }}
 
-      - name: Pull and save image (cache miss)
-        if: steps.cache-ciq.outputs.cache-hit != 'true'
+      - name: Pull and save builder image (cache miss)
+        if: steps.cache-builder.outputs.cache-hit != 'true'
         run: |
-          docker pull ghcr.io/matco/connectiq-tester:latest
-          docker save ghcr.io/matco/connectiq-tester:latest -o /tmp/connectiq.tar
+          docker pull ghcr.io/${{ github.repository }}/connectiq-builder:latest
+          docker save ghcr.io/${{ github.repository }}/connectiq-builder:latest \
+            -o /tmp/connectiq-builder.tar
 
-      - name: Load image (cache hit)
-        if: steps.cache-ciq.outputs.cache-hit == 'true'
-        run: docker load -i /tmp/connectiq.tar
+      - name: Load builder image (cache hit)
+        if: steps.cache-builder.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/connectiq-builder.tar
 
       - name: Run Monkey C unit tests
         # To run locally (shows full output):
         #   docker run --rm -v "$PWD/widget:/app" --workdir /app \
-        #     --entrypoint tester.sh ghcr.io/matco/connectiq-tester:latest \
-        #     edge530 ""
-        uses: matco/action-connectiq-tester@v1
-        with:
-          device: edge530
-          path: widget
+        #     ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:latest \
+        #     edge530
+        run: |
+          docker run --rm \
+            -v "$PWD/widget:/app" \
+            --workdir /app \
+            ghcr.io/${{ github.repository }}/connectiq-builder:latest \
+            edge530

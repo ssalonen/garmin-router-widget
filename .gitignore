@@ -19,3 +19,7 @@ widget/bin/*.iq
 # macOS
 .DS_Store
 widget/bin/
+
+# Docker build context (populated by sdk-update.yml, never committed)
+.github/docker/sdk/
+.github/docker/devices/
