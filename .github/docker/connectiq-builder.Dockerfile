@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     libgl1 \
     libgtk-3-0 \
+    libsecret-1-0 \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
