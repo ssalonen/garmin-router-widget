@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libgtk-3-0 \
     libsecret-1-0 \
+    libusb-1.0-0 \
+    libudev1 \
     xdotool \
     imagemagick \
     openssl \
