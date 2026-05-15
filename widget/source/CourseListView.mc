@@ -43,6 +43,7 @@ class CourseListView extends WatchUi.View {
     }
 
     function onShow() as Void {
+        if ($ has :_IS_TEST_BUILD) { return; }
         _loadCourseList();
     }
 
