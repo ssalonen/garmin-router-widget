@@ -45,6 +45,7 @@ jobs:
           if [ -n "${{ inputs.sdk_version }}" ]; then
             VERSION="${{ inputs.sdk_version }}"
           else
+            mkdir -p ~/.Garmin/ConnectIQ/Sdks
             VERSION=$(connect-iq-sdk-manager --log-level error sdk list \
               | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
           fi
