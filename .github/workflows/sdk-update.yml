@@ -2,7 +2,7 @@ name: Update Connect IQ SDK
 
 on:
   schedule:
-    - cron: '0 4 * * 1'  # Weekly, Monday 04:00 UTC
+    - cron: '0 4 1 * *'  # Monthly, 1st of month 04:00 UTC
   workflow_dispatch:
     inputs:
       sdk_version:
