@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libgtk-3-0 \
     libsecret-1-0 \
+    libusb-1.0-0 \
+    libudev1 \
     xdotool \
     imagemagick \
     openssl \
@@ -24,6 +26,11 @@ RUN mkdir -p /root/.Garmin/ConnectIQ/Devices
 COPY devices/ /root/.Garmin/ConnectIQ/Devices/
 
 RUN chmod +x /opt/connectiq-sdk/bin/* /usr/local/bin/tester.sh
+
+# Verify all simulator shared-library dependencies are satisfied.
+# This turns a confusing runtime crash into a clear build failure.
+RUN echo "=== ldd simulator ===" && ldd /opt/connectiq-sdk/bin/simulator && \
+    ! ldd /opt/connectiq-sdk/bin/simulator | grep -q "not found"
 
 WORKDIR /app
 ENTRYPOINT ["tester.sh"]
