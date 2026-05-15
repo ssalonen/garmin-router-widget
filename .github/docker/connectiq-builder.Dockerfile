@@ -27,5 +27,10 @@ COPY devices/ /root/.Garmin/ConnectIQ/Devices/
 
 RUN chmod +x /opt/connectiq-sdk/bin/* /usr/local/bin/tester.sh
 
+# Verify all simulator shared-library dependencies are satisfied.
+# This turns a confusing runtime crash into a clear build failure.
+RUN echo "=== ldd simulator ===" && ldd /opt/connectiq-sdk/bin/simulator && \
+    ! ldd /opt/connectiq-sdk/bin/simulator | grep -q "not found"
+
 WORKDIR /app
 ENTRYPOINT ["tester.sh"]
