@@ -5,6 +5,7 @@
         id="a3f7c2d1-5b4e-4a8f-9c3d-7e2b1f5d4c8a"
         name="@Strings.AppName"
         minSdkVersion="3.1.0"
+        launcherIcon="@Drawables.launcher_icon"
         type="widget">
         <iq:products>
             <iq:product id="edge530"/>
