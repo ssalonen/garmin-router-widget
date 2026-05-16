@@ -43,6 +43,34 @@ if ! command -v python3 &>/dev/null; then
     apt-get update -qq && apt-get install -y --quiet python3 >/dev/null
 fi
 
+# ── Simulator font data ───────────────────────────────────────────────────────
+# The CIQ simulator looks for font bitmaps at ~/.Garmin/ConnectIQ/Fonts/
+# (hardcoded, ignores CONNECTIQ_HOME). The SDK manager only downloads device
+# profiles; the font files come from the matco/connectiq-tester community
+# archive. Once the Docker image is rebuilt with Fonts/ baked in this block
+# will be a no-op.
+if [ ! -d "/root/.Garmin/ConnectIQ/Fonts" ] || \
+   [ -z "$(ls -A /root/.Garmin/ConnectIQ/Fonts 2>/dev/null)" ]; then
+    echo "[e2e] Fonts not in image — fetching from matco/connectiq-tester archive..."
+    python3 - << 'PYEOF'
+import urllib.request, zipfile, os, shutil
+url = "https://github.com/matco/connectiq-tester/raw/8bf6a15/devices.zip"
+urllib.request.urlretrieve(url, "/tmp/devices.zip")
+with zipfile.ZipFile("/tmp/devices.zip") as z:
+    members = [m for m in z.namelist() if m.startswith("Fonts/")]
+    z.extractall("/tmp/ciq-dl", members)
+src = "/tmp/ciq-dl/Fonts"
+dst = "/root/.Garmin/ConnectIQ/Fonts"
+if os.path.isdir(src):
+    shutil.copytree(src, dst)
+    print("[e2e] Fonts installed:", len(os.listdir(dst)), "items")
+else:
+    print("[e2e] WARNING: no Fonts/ dir in devices.zip")
+PYEOF
+else
+    echo "[e2e] Fonts already present: $(ls /root/.Garmin/ConnectIQ/Fonts | wc -l) items"
+fi
+
 echo "[e2e] ── Setup ──────────────────────────────────────────────────────"
 
 # ── Copy widget source to a writable temp dir ────────────────────────────────
