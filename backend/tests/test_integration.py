@@ -5,6 +5,7 @@ These patch at the garmin function level (not the Garmin Connect HTTP level),
 so they test: routing + serialisation + response format, without needing
 real Garmin credentials.
 """
+import base64
 import struct
 import pytest
 from unittest.mock import patch
@@ -17,8 +18,9 @@ def http_client():
     return TestClient(app)
 
 
-def _decode_binary(data: bytes) -> list[dict]:
-    """Python mirror of the widget's decodeBinaryPoints for assertion use."""
+def _decode_ascii85_points(text: str) -> list[dict]:
+    """Python mirror of the widget's decodeAscii85 + decodeBinaryPoints."""
+    data = base64.a85decode(text, adobe=False)
     points = []
     for i in range(0, len(data) - 7, 8):
         lat = struct.unpack(">i", data[i:i+4])[0] / 1e7
@@ -35,27 +37,28 @@ INTEGRATION_POINTS = [
 ]
 
 
-def test_integration_course_binary_roundtrip(http_client):
-    """get_course_points → binary HTTP response → decoded coords match input."""
+def test_integration_course_ascii85_roundtrip(http_client):
+    """get_course_points → ASCII85 text/plain response → decoded coords match input."""
     with patch("garmin.get_course_points", return_value=INTEGRATION_POINTS):
         response = http_client.get("/api/course/123456789")
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "application/octet-stream"
-    assert len(response.content) == len(INTEGRATION_POINTS) * 8
+    assert "text/plain" in response.headers["content-type"]
+    # 3 points × 10 ASCII85 chars each = 30 chars
+    assert len(response.text) == len(INTEGRATION_POINTS) * 10
 
-    decoded = _decode_binary(response.content)
+    decoded = _decode_ascii85_points(response.text)
     for original, got in zip(INTEGRATION_POINTS, decoded):
         assert got["lat"] == pytest.approx(original["lat"], abs=1e-6)
         assert got["lon"] == pytest.approx(original["lon"], abs=1e-6)
 
 
 def test_integration_course_empty_route(http_client):
-    """Zero points encodes to zero bytes."""
+    """Zero points encodes to empty string."""
     with patch("garmin.get_course_points", return_value=[]):
         response = http_client.get("/api/course/123456789")
     assert response.status_code == 200
-    assert response.content == b""
+    assert response.text == ""
 
 
 def test_integration_courses_list_shape(http_client):
