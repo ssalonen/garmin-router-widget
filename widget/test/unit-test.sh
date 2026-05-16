@@ -81,7 +81,17 @@ if [ "$SOCKET_FOUND" = false ]; then
     echo "WARNING: no CIQ socket found after 30s — attempting monkeydo anyway"
 fi
 
-# ── Run tests (60s timeout to avoid CI hangs) ─────────────────────────────────
-# -t tells monkeydo to execute (:test) functions and exit with pass/fail;
-# without it the app runs as a normal app and hangs forever.
-timeout 60s monkeydo /tmp/unit-test.prg "$DEVICE" -t
+# ── Run tests ─────────────────────────────────────────────────────────────────
+# -t tells monkeydo to execute (:test) functions and report results.
+# monkeydo always exits non-zero (even on full pass) — infer success from
+# the last output line starting with "PASSED".
+TEST_OUT=$(timeout 60s monkeydo /tmp/unit-test.prg "$DEVICE" -t 2>&1) || true
+echo "$TEST_OUT"
+LAST=$(echo "$TEST_OUT" | tail -1)
+if echo "$LAST" | grep -q '^PASSED'; then
+    echo "Unit tests PASSED"
+    exit 0
+else
+    echo "Unit tests FAILED (last line: $LAST)"
+    exit 1
+fi
