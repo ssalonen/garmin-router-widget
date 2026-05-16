@@ -112,28 +112,19 @@ jobs:
             mkdir -p .github/docker/devices
           fi
 
-          # The simulator looks for font bitmaps at the hardcoded path
-          # ~/.Garmin/ConnectIQ/Fonts/ regardless of CONNECTIQ_HOME.
-          # Include fonts if the SDK manager downloaded them; otherwise
-          # fall back to the matco/connectiq-tester community archive
-          # which provides fonts for all common devices.
+          # Simulator font bitmaps: only available from a machine with the
+          # official Garmin Connect IQ IDE plugin installed.  The CLI tool
+          # does not download them; the matco/connectiq-tester archive also
+          # has no Fonts/ directory.  Copy if present; otherwise create an
+          # empty placeholder so the Dockerfile COPY doesn't fail.
           FONTS_DIR="${HOME}/.Garmin/ConnectIQ/Fonts"
           if [ -d "$FONTS_DIR" ] && [ -n "$(ls -A "$FONTS_DIR" 2>/dev/null)" ]; then
-            echo "Fonts found at $FONTS_DIR — copying"
+            echo "Fonts found at $FONTS_DIR ($(find "$FONTS_DIR" -type f | wc -l) files) — copying"
             cp -r "$FONTS_DIR" .github/docker/fonts
           else
-            echo "No fonts from SDK manager — downloading from matco/connectiq-tester"
-            wget -q https://github.com/matco/connectiq-tester/raw/8bf6a15/devices.zip \
-              -O /tmp/devices.zip
-            mkdir -p /tmp/ciq-devices
-            unzip -q /tmp/devices.zip -d /tmp/ciq-devices
-            if [ -d /tmp/ciq-devices/Fonts ]; then
-              cp -r /tmp/ciq-devices/Fonts .github/docker/fonts
-            else
-              mkdir -p .github/docker/fonts
-            fi
+            echo "No simulator fonts found — image will lack font rendering support"
+            mkdir -p .github/docker/fonts
           fi
-          echo "Font files: $(find .github/docker/fonts -type f | wc -l)"
 
       - name: Build and push Docker image
         if: steps.image-check.outputs.exists != 'true' || inputs.force_rebuild
