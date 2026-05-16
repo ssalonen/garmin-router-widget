@@ -72,7 +72,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           connect-iq-sdk-manager sdk set ${{ steps.resolve.outputs.version }}
-          connect-iq-sdk-manager device download --manifest=widget/manifest.xml
+          connect-iq-sdk-manager device download --manifest=widget/manifest.xml --include-fonts
 
       - name: Save SDK to cache
         if: steps.cache.outputs.cache-hit != 'true'
@@ -112,17 +112,13 @@ jobs:
             mkdir -p .github/docker/devices
           fi
 
-          # Simulator font bitmaps: only available from a machine with the
-          # official Garmin Connect IQ IDE plugin installed.  The CLI tool
-          # does not download them; the matco/connectiq-tester archive also
-          # has no Fonts/ directory.  Copy if present; otherwise create an
-          # empty placeholder so the Dockerfile COPY doesn't fail.
+          # Simulator font bitmaps — downloaded above via --include-fonts.
           FONTS_DIR="${HOME}/.Garmin/ConnectIQ/Fonts"
           if [ -d "$FONTS_DIR" ] && [ -n "$(ls -A "$FONTS_DIR" 2>/dev/null)" ]; then
-            echo "Fonts found at $FONTS_DIR ($(find "$FONTS_DIR" -type f | wc -l) files) — copying"
+            echo "Fonts: $(find "$FONTS_DIR" -type f | wc -l) files"
             cp -r "$FONTS_DIR" .github/docker/fonts
           else
-            echo "No simulator fonts found — image will lack font rendering support"
+            echo "WARNING: no font files found after --include-fonts — image will lack font rendering"
             mkdir -p .github/docker/fonts
           fi
 
