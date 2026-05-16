@@ -58,17 +58,21 @@ jobs:
         run: docker load -i /tmp/connectiq-builder.tar
 
       - name: Run Monkey C unit tests
+        # Uses the repo's test/unit-test.sh instead of the image's built-in
+        # tester.sh so we can fix runner logic without rebuilding the image.
         # To run locally:
         #   docker run --rm -v "$PWD/widget:/app" --workdir /app \
+        #     --entrypoint /bin/bash \
         #     ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:9.1.0 \
-        #     edge530
+        #     /app/test/unit-test.sh edge530
         run: |
           docker run --rm \
             -v "$PWD/widget:/app" \
             --workdir /app \
             -e CONNECTIQ_HOME=/opt/connectiq-sdk \
+            --entrypoint /bin/bash \
             ${{ env.CIQ_IMAGE }} \
-            edge530
+            /app/test/unit-test.sh edge530
 
   e2e:
     name: E2E screenshot tests
