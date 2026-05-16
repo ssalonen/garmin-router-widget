@@ -26,9 +26,12 @@ COPY tester.sh /usr/local/bin/tester.sh
 ENV PATH="/opt/connectiq-sdk/bin:${PATH}"
 ENV CONNECTIQ_HOME=/opt/connectiq-sdk
 
-# Device profiles must live at the path the SDK tools expect.
-RUN mkdir -p /root/.Garmin/ConnectIQ/Devices
+# Device profiles and font bitmaps must live at the paths the SDK tools
+# expect. The simulator looks for Fonts/ at this hardcoded location
+# regardless of CONNECTIQ_HOME, which is why fonts were missing.
+RUN mkdir -p /root/.Garmin/ConnectIQ/Devices /root/.Garmin/ConnectIQ/Fonts
 COPY devices/ /root/.Garmin/ConnectIQ/Devices/
+COPY fonts/ /root/.Garmin/ConnectIQ/Fonts/
 
 RUN chmod +x /opt/connectiq-sdk/bin/* /usr/local/bin/tester.sh
 
