@@ -60,9 +60,9 @@ trap "kill $SIM_PID $XVFB_PID 2>/dev/null; exit" INT TERM EXIT
 echo "Waiting for simulator socket..."
 SOCKET_FOUND=false
 for i in $(seq 1 30); do
-    # Search broadly — socket path changed between SDK versions
-    if find /tmp -maxdepth 2 -type s 2>/dev/null | grep -q . || \
-       ls /tmp/.ciq* /tmp/apple* 2>/dev/null | grep -q .; then
+    # Exclude X11 display sockets — only look for the CIQ IPC socket
+    if ls /tmp/.ciq* 2>/dev/null | grep -q . || \
+       find /tmp -maxdepth 2 -type s ! -path '/tmp/.X11-unix/*' 2>/dev/null | grep -q .; then
         echo "Simulator socket found after ${i}s"
         SOCKET_FOUND=true
         break
@@ -75,18 +75,13 @@ for i in $(seq 1 30); do
 done
 
 echo "Simulator process status: $(kill -0 $SIM_PID 2>/dev/null && echo running || echo dead)"
-echo "Socket files: $(find /tmp -maxdepth 2 -type s 2>/dev/null | tr '\n' ' ' || echo none)"
-echo "Legacy socket check: $(ls /tmp/.ciq* /tmp/apple* 2>/dev/null | tr '\n' ' ' || echo none)"
+echo "Socket files: $(find /tmp -maxdepth 2 -type s ! -path '/tmp/.X11-unix/*' 2>/dev/null | tr '\n' ' ' || echo none)"
 
 if [ "$SOCKET_FOUND" = false ]; then
-    echo "WARNING: no socket found after 30s — attempting monkeydo anyway"
+    echo "WARNING: no CIQ socket found after 30s — attempting monkeydo anyway"
 fi
 
 # ── Run tests (60s timeout to avoid CI hangs) ─────────────────────────────────
-timeout 60s monkeydo /tmp/unit-test.prg "$DEVICE"
-EXIT=$?
-if [ $EXIT -eq 124 ]; then
-    echo "ERROR: monkeydo timed out after 60s"
-    exit 1
-fi
-exit $EXIT
+# -t tells monkeydo to execute (:test) functions and exit with pass/fail;
+# without it the app runs as a normal app and hangs forever.
+timeout 60s monkeydo /tmp/unit-test.prg "$DEVICE" -t
