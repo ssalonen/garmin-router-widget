@@ -49,8 +49,9 @@ class CourseLoader {
             url,
             null,
             {
-                :method  => Communications.HTTP_REQUEST_METHOD_GET,
-                :headers => _headers
+                :method       => Communications.HTTP_REQUEST_METHOD_GET,
+                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_TEXT_PLAIN,
+                :headers      => _headers
             },
             method(:_onCoursePointsRaw)
         );

@@ -10,6 +10,7 @@ Modes:
   error   - HTTP 500 on every request (triggers network error state)
 """
 
+import base64
 import json
 import struct
 import sys
@@ -38,13 +39,18 @@ COURSES = [
 ]
 
 
-def _encode_points(pts):
-    """Pack (lat, lon) pairs as big-endian int32 * 1e7 — matches decodeBinaryPoints."""
+def _pack_points(pts):
+    """Pack (lat, lon) pairs as big-endian int32 * 1e7."""
     buf = b""
     for lat, lon in pts:
         buf += struct.pack(">i", round(lat * 1e7))
         buf += struct.pack(">i", round(lon * 1e7))
     return buf
+
+
+def _encode_points(pts):
+    """ASCII85-encode packed course points for text/plain transport."""
+    return base64.a85encode(_pack_points(pts), adobe=False).decode("ascii")
 
 
 COURSE_POINTS = {
@@ -80,9 +86,9 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path.startswith("/api/course/"):
             course_id = path.split("/")[-1]
-            body = COURSE_POINTS.get(course_id)
-            if body:
-                self._respond(200, "application/octet-stream", body)
+            encoded = COURSE_POINTS.get(course_id)
+            if encoded:
+                self._respond(200, "text/plain; charset=ascii", encoded.encode("ascii"))
             else:
                 self.send_response(404)
                 self.end_headers()

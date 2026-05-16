@@ -72,6 +72,44 @@ function decodeBinaryPoints(bytes as Lang.Object?) as Lang.Array {
     return result;
 }
 
+// Decode an ASCII85-encoded string (Python/btoa a85encode variant — no <~ ~>
+// markers, no 'z' shorthand) into a ByteArray.
+// Uses Lang.Long accumulation to avoid int32 overflow: maximum encoded group
+// value is 84*85^4+...≈4.3B which exceeds the 2^31 signed int32 range.
+// Partial final groups (len % 5 != 0) are handled by padding with 84 ('u'),
+// matching Python's a85decode behaviour.  Our wire data is always 8-byte
+// aligned (2 complete groups of 4 bytes → 10 chars), so partial groups are a
+// defensive code path only.
+function decodeAscii85(encoded as Lang.String) as Lang.ByteArray {
+    var chars = encoded.toCharArray();
+    var n = chars.size();
+    var complete = n / 5;
+    var partial  = n % 5;
+    var size = complete * 4 + (partial >= 2 ? partial - 1 : 0);
+    var result = new [size]b;
+    var pos = 0;
+    var i = 0;
+    while (i < n) {
+        var groupLen = n - i;
+        if (groupLen > 5) { groupLen = 5; }
+        if (groupLen < 2) { break; }
+        var v = 0l;
+        for (var k = 0; k < groupLen; k++) {
+            v = v * 85l + (chars[i + k].toNumber() - 33).toLong();
+        }
+        for (var k = groupLen; k < 5; k++) {
+            v = v * 85l + 84l;
+        }
+        var outCount = groupLen - 1;
+        if (outCount > 0) { result[pos] = ((v >> 24) & 255l).toNumber(); pos++; }
+        if (outCount > 1) { result[pos] = ((v >> 16) & 255l).toNumber(); pos++; }
+        if (outCount > 2) { result[pos] = ((v >>  8) & 255l).toNumber(); pos++; }
+        if (outCount > 3) { result[pos] = (v         & 255l).toNumber(); pos++; }
+        i += groupLen;
+    }
+    return result;
+}
+
 // Map HTTP / BLE error codes to human-readable strings for on-screen display.
 function httpErrorString(code as Lang.Object?) as Lang.String {
     if (code == null) { return "Unknown error"; }
