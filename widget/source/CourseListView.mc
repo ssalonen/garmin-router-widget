@@ -130,8 +130,8 @@ class CourseListView extends WatchUi.View {
     // Called by CourseLoader with (code, data, durationMs)
     function onCoursePointsResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
         _lastDurationMs = durationMs;
-        if (code == 200 && data != null) {
-            var locs = decodeBinaryPoints(data);
+        if (code == 200 && data instanceof Lang.String) {
+            var locs = decodeBinaryPoints(decodeAscii85(data as Lang.String));
             if (locs.size() > 0) {
                 // Toybox.Navigation does not exist in the CIQ SDK; navigation
                 // must be started via the device's native route/course UI.

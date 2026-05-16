@@ -1,3 +1,4 @@
+import base64
 import os
 import struct
 import threading
@@ -74,3 +75,14 @@ def encode_points_binary(points: list[dict]) -> bytes:
         v for p in points
         for v in (round(p["lat"] * 1e7), round(p["lon"] * 1e7))
     ])
+
+
+def encode_points_ascii85(points: list[dict]) -> str:
+    """ASCII85-encode packed course points for text/plain transport.
+
+    25% overhead vs raw binary (vs 33% for base64). Our 8-byte-per-point
+    binary data is always 4-byte aligned, so no partial groups or padding
+    occur. Wire format: base64.a85encode(binary, adobe=False) — no <~ ~>
+    markers, pure ASCII chars 33-117.
+    """
+    return base64.a85encode(encode_points_binary(points), adobe=False).decode("ascii")
