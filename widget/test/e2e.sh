@@ -33,9 +33,9 @@ mkdir -p "$RESULTS"
 echo "[e2e] SDK devices: $(ls /root/.Garmin/ConnectIQ/Devices 2>/dev/null | tr '\n' ' ')"
 echo "[e2e] Device profile contents: $(ls /root/.Garmin/ConnectIQ/Devices/${DEVICE}/ 2>/dev/null | tr '\n' ' ')"
 echo "[e2e] CONNECTIQ_HOME=${CONNECTIQ_HOME:-unset}"
-echo "[e2e] SDK share/simulator: $(ls ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/simulator/ 2>/dev/null | tr '\n' ' ')"
-echo "[e2e] simulator.json: $(cat /root/.Garmin/ConnectIQ/Devices/${DEVICE}/simulator.json 2>/dev/null)"
-echo "[e2e] Font files in SDK: $(find ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/simulator -name '*.fnt' -o -name '*.ttf' -o -name '*.otf' 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] SDK share/simulator (recursive): $(find ${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share/simulator -type f 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] SDK all font-like files: $(find ${CONNECTIQ_HOME:-/opt/connectiq-sdk} -type f \( -iname '*font*' -o -name '*.fnt' -o -name '*.fon' \) 2>/dev/null | tr '\n' ' ')"
+echo "[e2e] ~/.Garmin/ConnectIQ top-level: $(ls /root/.Garmin/ConnectIQ/ 2>/dev/null | tr '\n' ' ')"
 
 # ── Python3 guard ────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
@@ -43,32 +43,14 @@ if ! command -v python3 &>/dev/null; then
     apt-get update -qq && apt-get install -y --quiet python3 >/dev/null
 fi
 
-# ── Simulator font data ───────────────────────────────────────────────────────
-# The CIQ simulator looks for font bitmaps at ~/.Garmin/ConnectIQ/Fonts/
-# (hardcoded, ignores CONNECTIQ_HOME). The SDK manager only downloads device
-# profiles; the font files come from the matco/connectiq-tester community
-# archive. Once the Docker image is rebuilt with Fonts/ baked in this block
-# will be a no-op.
-if [ ! -d "/root/.Garmin/ConnectIQ/Fonts" ] || \
-   [ -z "$(ls -A /root/.Garmin/ConnectIQ/Fonts 2>/dev/null)" ]; then
-    echo "[e2e] Fonts not in image — fetching from matco/connectiq-tester archive..."
-    python3 - << 'PYEOF'
-import urllib.request, zipfile, os, shutil
-url = "https://github.com/matco/connectiq-tester/raw/8bf6a15/devices.zip"
-urllib.request.urlretrieve(url, "/tmp/devices.zip")
-with zipfile.ZipFile("/tmp/devices.zip") as z:
-    members = [m for m in z.namelist() if m.startswith("Fonts/")]
-    z.extractall("/tmp/ciq-dl", members)
-src = "/tmp/ciq-dl/Fonts"
-dst = "/root/.Garmin/ConnectIQ/Fonts"
-if os.path.isdir(src):
-    shutil.copytree(src, dst)
-    print("[e2e] Fonts installed:", len(os.listdir(dst)), "items")
-else:
-    print("[e2e] WARNING: no Fonts/ dir in devices.zip")
-PYEOF
-else
-    echo "[e2e] Fonts already present: $(ls /root/.Garmin/ConnectIQ/Fonts | wc -l) items"
+# ── Ensure simulator finds SDK at the hardcoded ~/.Garmin/ConnectIQ path ─────
+# connectiq-tester (the reference impl) puts the SDK directly inside
+# ~/.Garmin/ConnectIQ/, so share/simulator/ lives at the hardcoded path the
+# simulator uses. Our SDK is at /opt/connectiq-sdk/ — symlink share/ so the
+# simulator finds it at both locations.
+if [ ! -e /root/.Garmin/ConnectIQ/share ]; then
+    echo "[e2e] Symlinking SDK share → ~/.Garmin/ConnectIQ/share"
+    ln -s "${CONNECTIQ_HOME:-/opt/connectiq-sdk}/share" /root/.Garmin/ConnectIQ/share
 fi
 
 echo "[e2e] ── Setup ──────────────────────────────────────────────────────"
