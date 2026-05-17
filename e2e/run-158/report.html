@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>E2E Test Report</title>
+<style>
+body{font-family:monospace;background:#1a1a1a;color:#e0e0e0;margin:20px;max-width:1400px}
+h1,h2{color:#fff}
+.badge{display:inline-block;padding:4px 10px;border-radius:4px;font-weight:bold;margin-bottom:8px}
+.badge.ok{background:#2e7d32;color:#fff}
+.badge.fail{background:#b71c1c;color:#fff}
+.grid{display:flex;flex-wrap:wrap;gap:14px;margin:16px 0}
+.shot{text-align:center}
+.shot img{max-height:260px;border:1px solid #444;display:block;cursor:zoom-in}
+.shot p{margin:4px 0 0;font-size:.82em;color:#aaa}
+.log-wrap{position:relative}
+pre{background:#111;padding:14px;overflow-x:auto;white-space:pre-wrap;
+    word-break:break-all;font-size:.80em;line-height:1.5;border-radius:4px}
+.copy-btn{position:absolute;top:8px;right:8px;padding:4px 10px;font-size:.78em;
+    font-family:monospace;background:#333;color:#ccc;border:1px solid #555;
+    border-radius:3px;cursor:pointer;user-select:none}
+.copy-btn:hover{background:#444;color:#fff}
+.copy-btn.ok{background:#2e7d32;color:#fff;border-color:#2e7d32}
+.pass{color:#66bb6a}
+.fail{color:#ef5350;font-weight:bold}
+.info{color:#42a5f5}
+.warn{color:#ffa726}
+table{border-collapse:collapse;margin:12px 0}
+td,th{border:1px solid #444;padding:6px 12px;text-align:left}
+th{background:#222}
+</style>
+</head>
+<body>
+<h1>E2E Test Report</h1>
+<div class="badge ok">PASS</div>
+<p>0 passed &nbsp;·&nbsp; 0 failed &nbsp;·&nbsp; 1 screenshots</p>
+
+<table>
+<tr><th>Result</th><th>Assertion</th></tr>
+
+</table>
+
+<h2>Screenshots</h2>
+<div class="grid">
+<div class="shot"><img src="data:image/png;base64,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" alt="00_simulator_empty"><p>00_simulator_empty</p></div>
+
+</div>
+
+<h2>Full test output</h2>
+<div class="log-wrap">
+<button class="copy-btn">Copy</button>
+<pre>[e2e] SDK devices: edge530 
+[e2e] Device profile contents: compiler.json edge530.api.debug.xml edge530.bin edge_530.png edge_map_toggle_option_1.png edge_map_toggle_option_2.png edge_map_toggle_option_3.png map_pan_down.png map_pan_left.png map_pan_right.png map_pan_up.png map_pointer.png map_zoom_in.png map_zoom_out.png menu2_check_off_edge.png menu2_check_on_edge.png menu2_toggle_off_edge.png menu2_toggle_on_edge.png navigation_pointer.png simulator.json 
+[e2e] CONNECTIQ_HOME=/opt/connectiq-sdk
+[e2e] SDK share/simulator (recursive): /opt/connectiq-sdk/share/simulator/icons8-pause-48.png /opt/connectiq-sdk/share/simulator/ciq_crash.png /opt/connectiq-sdk/share/simulator/brightness.png /opt/connectiq-sdk/share/simulator/ciq_crash_1_bpp.png /opt/connectiq-sdk/share/simulator/map_pin_icon.png /opt/connectiq-sdk/share/simulator/green.png /opt/connectiq-sdk/share/simulator/edge_map_zoom_in.png /opt/connectiq-sdk/share/simulator/icons8-play-48.png /opt/connectiq-sdk/share/simulator/text_prompt.bundle.sar /opt/connectiq-sdk/share/simulator/garmin_triangle.png /opt/connectiq-sdk/share/simulator/tones/error.wav /opt/connectiq-sdk/share/simulator/tones/alert_hi.wav /opt/connectiq-sdk/share/simulator/tones/interval_alert.wav /opt/connectiq-sdk/share/simulator/tones/time_alert.wav /opt/connectiq-sdk/share/simulator/tones/success.wav /opt/connectiq-sdk/share/simulator/tones/key.wav /opt/connectiq-sdk/share/simulator/tones/low_battery.wav /opt/connectiq-sdk/share/simulator/tones/failure.wav /opt/connectiq-sdk/share/simulator/tones/power.wav /opt/connectiq-sdk/share/simulator/tones/lap.wav /opt/connectiq-sdk/share/simulator/tones/reset.wav /opt/connectiq-sdk/share/simulator/tones/stop.wav /opt/connectiq-sdk/share/simulator/tones/canary.wav /opt/connectiq-sdk/share/simulator/tones/alert_lo.wav /opt/connectiq-sdk/share/simulator/tones/start.wav /opt/connectiq-sdk/share/simulator/tones/alarm.wav /opt/connectiq-sdk/share/simulator/tones/loud_beep.wav /opt/connectiq-sdk/share/simulator/tones/distance_alert.wav /opt/connectiq-sdk/share/simulator/tones/message.wav /opt/connectiq-sdk/share/simulator/settings_help.png /opt/connectiq-sdk/share/simulator/review-stars.png /opt/connectiq-sdk/share/simulator/edge_map_toggle_option_1.png /opt/connectiq-sdk/share/simulator/menu2_toggle_on_right_218x218.png /opt/connectiq-sdk/share/simulator/red.png /opt/connectiq-sdk/share/simulator/timezone/tzdata/.gitattributes /opt/connectiq-sdk/share/simulator/timezone/tzdata/antarctica /opt/connectiq-sdk/share/simulator/timezone/tzdata/windowsZones.xml /opt/connectiq-sdk/share/simulator/timezone/tzdata/checklinks.awk /opt/connectiq-sdk/share/simulator/timezone/tzdata/theory.html /opt/connectiq-sdk/share/simulator/timezone/tzdata/README /opt/connectiq-sdk/share/simulator/timezone/tzdata/australasia /opt/connectiq-sdk/share/simulator/timezone/tzdata/zoneinfo2tdf.pl /opt/connectiq-sdk/share/simulator/timezone/tzdata/CONTRIBUTING /opt/connectiq-sdk/share/simulator/timezone/tzdata/zone.tab /opt/connectiq-sdk/share/simulator/timezone/tzdata/northamerica /opt/connectiq-sdk/share/simulator/timezone/tzdata/NEWS /opt/connectiq-sdk/share/simulator/timezone/tzdata/Makefile /opt/connectiq-sdk/share/simulator/timezone/tzdata/europe /opt/connectiq-sdk/share/simulator/timezone/tzdata/ziguard.awk /opt/connectiq-sdk/share/simulator/timezone/tzdata/LICENSE /opt/connectiq-sdk/share/simulator/timezone/tzdata/backward /opt/connectiq-sdk/share/simulator/timezone/tzdata/version /opt/connectiq-sdk/share/simulator/timezone/tzdata/factory /opt/connectiq-sdk/share/simulator/timezone/tzdata/backzone /opt/connectiq-sdk/share/simulator/timezone/tzdata/zishrink.awk /opt/connectiq-sdk/share/simulator/timezone/tzdata/africa /opt/connectiq-sdk/share/simulator/timezone/tzdata/etcetera /opt/connectiq-sdk/share/simulator/timezone/tzdata/calendars /opt/connectiq-sdk/share/simulator/timezone/tzdata/leapseconds /opt/connectiq-sdk/share/simulator/timezone/tzdata/southamerica /opt/connectiq-sdk/share/simulator/timezone/tzdata/iso3166.tab /opt/connectiq-sdk/share/simulator/timezone/tzdata/checktab.awk /opt/connectiq-sdk/share/simulator/timezone/tzdata/leapseconds.awk /opt/connectiq-sdk/share/simulator/timezone/tzdata/zone1970.tab /opt/connectiq-sdk/share/simulator/timezone/tzdata/asia /opt/connectiq-sdk/share/simulator/timezone/tzdata/SECURITY /opt/connectiq-sdk/share/simulator/timezone/tzdata/leap-seconds.list /opt/connectiq-sdk/share/simulator/timezone/zonedetect/timezone_DATA_LICENSE /opt/connectiq-sdk/share/simulator/timezone/zonedetect/timezone_db.bin /opt/connectiq-sdk/share/simulator/menu2_check_on_215x180.png /opt/connectiq-sdk/share/simulator/menu2_toggle_on_left_218x218.png /opt/connectiq-sdk/share/simulator/menu2_toggle_off_215x180.png /opt/connectiq-sdk/share/simulator/menu2_toggle_off_left_218x218.png /opt/connectiq-sdk/share/simulator/menu2_check_off_215x180.png /opt/connectiq-sdk/share/simulator/phrases.json /opt/connectiq-sdk/share/simulator/flashlight.png /opt/connectiq-sdk/share/simulator/menu2_toggle_off_right_218x218.png /opt/connectiq-sdk/share/simulator/garmin_banner_1_bpp.png /opt/connectiq-sdk/share/simulator/player/repeat_all_lg.png /opt/connectiq-sdk/share/simulator/player/source.png /opt/connectiq-sdk/share/simulator/player/repeat_off.png /opt/connectiq-sdk/share/simulator/player/next.png /opt/connectiq-sdk/share/simulator/player/more.png /opt/connectiq-sdk/share/simulator/player/skip_backward.png /opt/connectiq-sdk/share/simulator/player/albumArt.png /opt/connectiq-sdk/share/simulator/player/skip_forward_lg.png /opt/connectiq-sdk/share/simulator/player/play_lg.png /opt/connectiq-sdk/share/simulator/player/shuffle_on.png /opt/connectiq-sdk/share/simulator/player/skip_forward.png /opt/connectiq-sdk/share/simulator/player/previous_lg.png /opt/connectiq-sdk/share/simulator/player/controls.png /opt/connectiq-sdk/share/simulator/player/play.png /opt/connectiq-sdk/share/simulator/player/repeat_one.png /opt/connectiq-sdk/share/simulator/player/shuffle_off_lg.png /opt/connectiq-sdk/share/simulator/player/volume.png /opt/connectiq-sdk/share/simulator/player/previous.png /opt/connectiq-sdk/share/simulator/player/library.png /opt/connectiq-sdk/share/simulator/player/pause_lg.png /opt/connectiq-sdk/share/simulator/player/shuffle_on_lg.png /opt/connectiq-sdk/share/simulator/player/rating_none.png /opt/connectiq-sdk/share/simulator/player/rating_negative.png /opt/connectiq-sdk/share/simulator/player/rating_none_lg.png /opt/connectiq-sdk/share/simulator/player/repeat_all.png /opt/connectiq-sdk/share/simulator/player/settings.png /opt/connectiq-sdk/share/simulator/player/next_lg.png /opt/connectiq-sdk/share/simulator/player/rating_positive.png /opt/connectiq-sdk/share/simulator/player/pause.png /opt/connectiq-sdk/share/simulator/player/shuffle_off.png /opt/connectiq-sdk/share/simulator/player/skip_backward_lg.png /opt/connectiq-sdk/share/simulator/player/repeat_off_lg.png /opt/connectiq-sdk/share/simulator/player/repeat_one_lg.png /opt/connectiq-sdk/share/simulator/edge_map_toggle_option_3.png /opt/connectiq-sdk/share/simulator/slot_types.json /opt/connectiq-sdk/share/simulator/menu2_toggle_on_215x180.png /opt/connectiq-sdk/share/simulator/cyclist-monkey.png /opt/connectiq-sdk/share/simulator/edge_map_zoom_out.png /opt/connectiq-sdk/share/simulator/edge_map_toggle_option_2.png 
+[e2e] SDK all font-like files: /opt/connectiq-sdk/resources/faq/reflecto_font.jpg /opt/connectiq-sdk/resources/programmers-guide/bmfont_options.png /opt/connectiq-sdk/doc/resources/faq/reflecto_font.jpg /opt/connectiq-sdk/doc/resources/programmers-guide/bmfont_options.png /opt/connectiq-sdk/doc/docs/Connect_IQ_FAQ/How_Do_I_Use_Custom_Fonts.html /opt/connectiq-sdk/doc/Toybox/WatchUi/FontResource.html /opt/connectiq-sdk/doc/Toybox/Graphics/VectorFont.html /opt/connectiq-sdk/doc/Toybox/Graphics/FontReference.html /opt/connectiq-sdk/samples/Analog/resources/resource/fonts/blackdiamond.fnt /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsRadialTextView.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsApp.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsMenuDelegate.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsAngledTextView.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsVectorFontsView.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsDelegate.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsView.html /opt/connectiq-sdk/samples/TrueTypeFonts/docs/Global/TrueTypeFontsFontMappingView.html /opt/connectiq-sdk/samples/TrueTypeFonts/source/MenuItems/TrueTypeFontsFontMapping.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/MenuItems/TrueTypeFontsAngledText.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/MenuItems/TrueTypeFontsRadialText.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/MenuItems/TrueTypeFontsVectorFonts.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/TrueTypeFontsView.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/TrueTypeFontsMenuDelegate.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/TrueTypeFontsDelegate.mc /opt/connectiq-sdk/samples/TrueTypeFonts/source/TrueTypeFontsApp.mc 
+[e2e] ~/.Garmin/ConnectIQ top-level: Devices Fonts 
+[e2e] Symlinking SDK share → ~/.Garmin/ConnectIQ/share
+[e2e] ── Setup ──────────────────────────────────────────────────────
+[e2e] backendUrl patched → http://127.0.0.1:8765
+[e2e] Generated temporary developer key
+BUILD SUCCESSFUL
+[e2e] Compiled OK → test-results/build/app.prg
+12:47:02: Debug: Adding duplicate image handler for &#x27;JPEG file&#x27;
+12:47:02: Debug: SetLayout
+[e2e] Simulator UI captured → 00_simulator_empty.png
+[e2e] Simulator config search:
+/root/.Garmin/ConnectIQ/simulator.ini
+/opt/connectiq-sdk/samples/Primates/resources/images/monkeys.jpg
+/opt/connectiq-sdk/samples/Primates/docs/Global/MonkeysView.html
+/opt/connectiq-sdk/samples/Primates/source/MonkeysView.mc
+/opt/connectiq-sdk/samples/Primates/resources/images/monkeys.jpg
+/opt/connectiq-sdk/samples/Primates/docs/Global/MonkeysView.html
+/opt/connectiq-sdk/samples/Primates/source/MonkeysView.mc
+[e2e] ── Scenario A: navigate first course ───────────────────────
+[mock] Listening on http://127.0.0.1:8765  mode=normal
+[e2e] Mock server PID=107  mode=normal
+[e2e] App loaded (PID=109)
+[mock] &quot;GET /api/courses?limit=10 HTTP/1.1&quot; 200 -
+<span class="info">INFO: GET /api/courses</span>
+<span class="info">INFO: Course list response</span>
+<span class="info">INFO: Courses loaded</span>
+[e2e] window 2097164: pos=(0,0) size=446x591 → clicking (223,295)
+[e2e]   child wid=2097153 10x10 area=100
+[e2e]   child wid=2097155 200x200 area=40000
+[e2e] canvas wid=2097155 (area=40000)
+import-im6.q16: unable to read X window image `2097155&#x27;: Resource temporarily unavailable @ error/xwindow.c/XImportImage/4977.
+import-im6.q16: missing an image filename `/app/test-results/e2e/01_course_list.png&#x27; @ error/import.c/ImportImageCommand/1276.
+[e2e] cleanup</pre>
+</div>
+</body>
+<script>
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const text = btn.closest('.log-wrap').querySelector('pre').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 2000);
+    });
+  });
+});
+</script>
+</html>
