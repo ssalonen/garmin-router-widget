@@ -9,6 +9,8 @@ const STATE_LIST_READY     = 1;
 const STATE_LOADING_COURSE = 2;
 const STATE_NAVIGATING     = 3;
 const STATE_ERROR          = 4;
+const STATE_SIGNED_OUT     = 5;
+const STATE_SIGNING_IN     = 6;
 
 // Parse the /api/courses JSON response into an array of course dicts.
 // Returns [] on any failure so callers never deal with null.
@@ -108,6 +110,65 @@ function decodeAscii85(encoded as Lang.String) as Lang.ByteArray {
         i += groupLen;
     }
     return result;
+}
+
+// ---- OAuth helpers (pure) -----------------------------------------------
+// The device-side OAuth flow (Communications.makeOAuthRequest) is imperative
+// and lives in OAuthClient.mc; these are the credential-free pieces that can
+// be unit-tested without the phone or Application.Storage.
+
+// OAuth client identifier the backend's /oauth/authorize allowlist expects.
+const OAUTH_CLIENT_ID = "garmin-router-widget";
+
+// Decide which access token to use at startup.
+//  1. A token stored from a completed OAuth sign-in wins.
+//  2. Otherwise a manually-configured apiKey property, unless it is empty or
+//     still the placeholder "change-me".
+//  3. Otherwise null → the widget shows the sign-in prompt.
+function chooseToken(storedToken as Lang.Object?, apiKeyProp as Lang.Object?) as Lang.String? {
+    if (storedToken instanceof Lang.String && !(storedToken as Lang.String).equals("")) {
+        return storedToken as Lang.String;
+    }
+    if (apiKeyProp instanceof Lang.String) {
+        var k = apiKeyProp as Lang.String;
+        if (!k.equals("") && !k.equals("change-me")) {
+            return k;
+        }
+    }
+    return null;
+}
+
+// Query params for makeOAuthRequest against the backend's /oauth/authorize.
+function oauthRequestParams(redirectUri as Lang.String) as Lang.Dictionary {
+    return {
+        "response_type" => "code",
+        "client_id"     => OAUTH_CLIENT_ID,
+        "redirect_uri"  => redirectUri
+    };
+}
+
+// Result-key mapping: pull the ?code=… param out of the intercepted redirect
+// into OAuthMessage.data["code"].
+function oauthResultKeys() as Lang.Dictionary {
+    return {"code" => "code"};
+}
+
+// Extract the authorization code from an OAuthMessage's data dictionary.
+function parseOAuthCode(data as Lang.Object?) as Lang.String? {
+    if (!(data instanceof Lang.Dictionary)) { return null; }
+    var code = (data as Lang.Dictionary).get("code");
+    if (code == null) { return null; }
+    var s = code.toString();
+    return s.equals("") ? null : s;
+}
+
+// Extract the access token from the /api/token JSON response.
+function parseTokenResponse(data as Lang.Object?) as Lang.String? {
+    if (!(data instanceof Lang.Dictionary)) { return null; }
+    var token = (data as Lang.Dictionary).get("access_token");
+    if (token == null) { return null; }
+    var s = token.toString();
+    return s.equals("") ? null : s;
 }
 
 // Map HTTP / BLE error codes to human-readable strings for on-screen display.
