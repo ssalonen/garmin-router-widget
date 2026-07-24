@@ -74,6 +74,21 @@ def test_course_points_garmin_error_returns_502(client, fake_session):
     assert client.get("/api/course/999").status_code == 502
 
 
+# ── expired/invalid Garmin tokens → 503 (widget shows a re-auth message) ──────
+
+def test_courses_auth_expired_returns_503(client, fake_session):
+    import garmin
+    fake_session.raise_exc = garmin.GarminAuthError("tokens expired")
+    r = client.get("/api/courses")
+    assert r.status_code == 503
+
+
+def test_course_points_auth_expired_returns_503(client, fake_session):
+    import garmin
+    fake_session.raise_exc = garmin.GarminAuthError("tokens expired")
+    assert client.get("/api/course/1").status_code == 503
+
+
 # ── shared-secret API key gate ───────────────────────────────────────────────
 
 def test_api_key_required_when_set(client, monkeypatch):

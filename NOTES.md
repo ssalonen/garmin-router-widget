@@ -24,6 +24,11 @@ request (`session_from_tokens`) and reuses it; the OAuth1 token lasts ~1 year an
 the OAuth2 bearer auto-refreshes. When it finally expires, revisit `/setup`. The
 password is used only to mint tokens and is never stored.
 
+When tokens are expired/invalid the backend returns **503** on the course
+endpoints (auth failures are surfaced as `GarminAuthError`, kept distinct from a
+transient 502), and the widget renders it as **"Garmin login expired"** — the
+cue to revisit `/setup`.
+
 **Protect the setup page:** it writes the account tokens, so gate it with
 `SETUP_TOKEN` (then browse to `/setup?token=…`) and/or keep the backend off the
 public internet. With `SETUP_TOKEN` unset the page is open.

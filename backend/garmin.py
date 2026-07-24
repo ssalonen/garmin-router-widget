@@ -13,7 +13,13 @@ complete it interactively.
 import base64
 import struct
 
-from garminconnect import Garmin
+from garminconnect import Garmin, GarminConnectAuthenticationError
+
+
+class GarminAuthError(Exception):
+    """The stored Garmin tokens are no longer valid (expired/revoked) and the
+    account must be reconnected via /setup. Distinct from a transient upstream
+    error so the widget can show a re-auth message instead of a generic one."""
 
 # Garmin Connect API endpoints (unofficial; may change without notice)
 _COURSE_LIST_PATH = "/course-service/course/favorites/"
@@ -80,8 +86,16 @@ class GarminSession:
     def __init__(self, client: Garmin):
         self._client = client
 
+    def _connectapi(self, path: str, **kwargs):
+        try:
+            return self._client.connectapi(path, **kwargs)
+        except GarminConnectAuthenticationError as e:
+            # Tokens expired/revoked (garth's silent OAuth2 refresh failed) →
+            # surface as a re-auth signal, not a generic upstream error.
+            raise GarminAuthError(str(e)) from e
+
     def get_courses(self, limit: int = 10) -> list[dict]:
-        data = self._client.connectapi(
+        data = self._connectapi(
             _COURSE_LIST_PATH,
             params={"start": 0, "limit": limit, "courseType": "ALL"},
         )
@@ -100,7 +114,7 @@ class GarminSession:
         return courses
 
     def get_course_points(self, course_id: str) -> list[dict]:
-        response = self._client.connectapi(_COURSE_PATH.format(id=course_id))
+        response = self._connectapi(_COURSE_PATH.format(id=course_id))
         return [
             {"lat": pt["latitude"], "lon": pt["longitude"]}
             for pt in response.get("geoPoints", [])

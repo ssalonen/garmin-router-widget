@@ -123,6 +123,7 @@ function httpErrorString(code as Lang.Object?) as Lang.String {
     if (c == -402) { return "Network error";     }
     if (c == 404)  { return "Course not found";  }
     if (c == 502)  { return "Backend error";     }
+    if (c == 503)  { return "Garmin login expired"; }  // backend needs /setup
     if (c > 0)     { return "HTTP " + c;         }
     return "Error " + c;
 }

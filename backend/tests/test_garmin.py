@@ -99,6 +99,17 @@ def test_session_get_courses_propagates_error():
         session.get_courses()
 
 
+def test_session_converts_auth_error_to_garmin_auth_error():
+    from garminconnect import GarminConnectAuthenticationError
+    client = MagicMock()
+    client.connectapi.side_effect = GarminConnectAuthenticationError("401 expired")
+    session = garmin.GarminSession(client)
+    with pytest.raises(garmin.GarminAuthError):
+        session.get_courses()
+    with pytest.raises(garmin.GarminAuthError):
+        session.get_course_points("123")
+
+
 # ── get_courses field fallbacks (unofficial API's shifting field names) ───────
 
 def test_get_courses_name_falls_back_to_name_then_synthetic():

@@ -21,6 +21,10 @@ app = FastAPI(title="Garmin Route Loader Backend")
 
 _TOKEN_FILE = os.environ.get("GARMIN_TOKEN_FILE", "garmin_tokens.blob")
 
+# 503 detail shared by every "reconnect the Garmin account" path (no tokens,
+# invalid tokens, or expired-at-call-time). The widget keys off the 503 status.
+_REAUTH_DETAIL = "Garmin login expired. Visit /setup to reconnect your account."
+
 _api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=False)
 
 _session: garmin.GarminSession | None = None
@@ -193,8 +197,11 @@ def list_courses(
 ):
     try:
         courses = session.get_courses(limit=limit)
+    except garmin.GarminAuthError:
+        _reset_session()
+        raise HTTPException(status_code=503, detail=_REAUTH_DETAIL)
     except Exception as e:
-        _reset_session()  # tokens may have expired; force reload next call
+        _reset_session()  # transient upstream error; force reload next call
         raise HTTPException(status_code=502, detail=str(e))
     return {"courses": courses}
 
@@ -207,6 +214,9 @@ def get_course(
 ):
     try:
         points = session.get_course_points(course_id)
+    except garmin.GarminAuthError:
+        _reset_session()
+        raise HTTPException(status_code=503, detail=_REAUTH_DETAIL)
     except Exception as e:
         _reset_session()
         raise HTTPException(status_code=502, detail=str(e))
