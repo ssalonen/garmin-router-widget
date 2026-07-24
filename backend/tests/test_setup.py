@@ -89,6 +89,17 @@ def test_token_file_written_owner_only(tmp_path):
     assert (mode & 0o077) == 0
 
 
+def test_save_overwrites_and_leaves_no_temp_files(tmp_path):
+    # A second sign-in (token refresh) must replace the blob atomically, with no
+    # stray temp file left in the directory.
+    SetupService(str(tmp_path / "tokens.blob"), auth=FakeAuth(), pending=PendingLogins()) \
+        .begin("first@example.com", "pw")
+    SetupService(str(tmp_path / "tokens.blob"), auth=FakeAuth(), pending=PendingLogins()) \
+        .begin("second@example.com", "pw")
+    assert (tmp_path / "tokens.blob").read_text() == "blob::second@example.com"
+    assert [p.name for p in tmp_path.iterdir()] == ["tokens.blob"]
+
+
 # ── PendingLogins ────────────────────────────────────────────────────────────
 
 def test_pending_roundtrip_and_single_use():

@@ -9,8 +9,18 @@ def test_setup_page_renders_login_form(client):
     r = client.get("/setup")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    body = r.text.lower()
-    assert "email" in body and "password" in body
+    # Key off the actual inputs, not prose that happens to contain "password".
+    assert 'type="password"' in r.text
+    assert 'name="email"' in r.text
+
+
+def test_setup_page_escapes_reflected_token(client):
+    """token is attacker-controllable and reflected into the form — it must be
+    HTML-escaped (reflected-XSS guard), even in the default open mode."""
+    r = client.get("/setup", params={"token": '"><script>alert(1)</script>'})
+    assert r.status_code == 200
+    assert "<script>alert(1)" not in r.text
+    assert "&lt;script&gt;" in r.text
 
 
 def test_setup_page_gated_by_setup_token(client, monkeypatch):
@@ -36,7 +46,8 @@ def test_login_bad_credentials_reshows_form(client, fake_auth):
     fake_auth.begin_error = Exception("invalid credentials")
     r = client.post("/setup/login", data={"email": "rider@example.com", "password": "bad"})
     assert r.status_code == 401
-    assert "password" in r.text.lower()
+    assert 'type="password"' in r.text       # form re-rendered for retry
+    assert 'class="err"' in r.text           # and the error banner is actually shown
 
 
 def test_login_mfa_renders_mfa_form(client, fake_auth):
@@ -80,3 +91,13 @@ def test_mfa_expired_session_is_400(client, fake_auth):
         data={"mfa_code": "123456", "mfa_session_id": "unknown-or-expired"},
     )
     assert r.status_code == 400
+
+
+def test_mfa_rejects_bad_setup_token(client, monkeypatch):
+    """The SETUP_TOKEN gate must guard /setup/mfa too, not only /setup/login."""
+    monkeypatch.setenv("SETUP_TOKEN", "letmein")
+    r = client.post(
+        "/setup/mfa",
+        data={"mfa_code": "123456", "mfa_session_id": "whatever", "token": "wrong"},
+    )
+    assert r.status_code == 403

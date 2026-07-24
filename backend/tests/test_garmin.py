@@ -97,3 +97,76 @@ def test_session_get_courses_propagates_error():
     session = garmin.GarminSession(client)
     with pytest.raises(Exception, match="Garmin API error"):
         session.get_courses()
+
+
+# ── get_courses field fallbacks (unofficial API's shifting field names) ───────
+
+def test_get_courses_name_falls_back_to_name_then_synthetic():
+    client = MagicMock()
+    client.connectapi.return_value = [
+        {"courseId": 1, "name": "Alt Field", "distanceInMeters": 1000.0},  # courseName missing
+        {"courseId": 2, "distanceInMeters": 1000.0},                       # both missing
+    ]
+    out = garmin.GarminSession(client).get_courses()
+    assert out[0]["name"] == "Alt Field"
+    assert out[1]["name"] == "Course 2"
+
+
+def test_get_courses_distance_fallback_chain():
+    client = MagicMock()
+    client.connectapi.return_value = [
+        {"courseId": 1, "courseName": "A", "totalDistance": 2000.0},   # distanceInMeters missing
+        {"courseId": 2, "courseName": "B", "distance": 3000.0},        # only 'distance'
+        {"courseId": 3, "courseName": "C"},                            # none → 0
+    ]
+    out = garmin.GarminSession(client).get_courses()
+    assert out[0]["distanceKm"] == 2.0
+    assert out[1]["distanceKm"] == 3.0
+    assert out[2]["distanceKm"] == 0
+
+
+def test_get_courses_null_fields_fall_back_and_do_not_crash():
+    # JSON null (present-but-null) must be treated like a missing key, not
+    # passed through — otherwise None/1000 raises and None becomes the name.
+    client = MagicMock()
+    client.connectapi.return_value = [
+        {"courseId": 9, "courseName": None, "distanceInMeters": None},
+    ]
+    out = garmin.GarminSession(client).get_courses()
+    assert out[0]["name"] == "Course 9"
+    assert out[0]["distanceKm"] == 0
+
+
+def test_get_courses_skips_entries_without_id():
+    client = MagicMock()
+    client.connectapi.return_value = [
+        {"name": "no id"},
+        {"courseId": 7, "courseName": "Keep", "distanceInMeters": 0.0},
+    ]
+    out = garmin.GarminSession(client).get_courses()
+    assert len(out) == 1
+    assert out[0]["id"] == "7"
+
+
+def test_get_course_points_empty_or_missing_geopoints():
+    client = MagicMock()
+    client.connectapi.return_value = {}  # no geoPoints key
+    assert garmin.GarminSession(client).get_course_points("1") == []
+
+
+# ── garth contract pin: guard against a garminconnect upgrade breaking the seam
+
+def test_garth_seam_contract_matches_real_garminconnect():
+    """The faked seam is only trustworthy if the real library still exposes what
+    begin_login/resume_login/session_from_tokens depend on."""
+    import inspect
+
+    from garminconnect import Garmin as RealGarmin
+
+    assert "return_on_mfa" in inspect.signature(RealGarmin.__init__).parameters
+    assert hasattr(RealGarmin, "login")
+    assert hasattr(RealGarmin, "resume_login")
+    # Construction is offline (no login() call) — verify the token (de)serialisers.
+    g = RealGarmin(email="x", password="y")
+    assert hasattr(g.client, "dumps")
+    assert hasattr(g.client, "loads")

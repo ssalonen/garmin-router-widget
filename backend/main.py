@@ -5,7 +5,9 @@ in env, MFA supported). The widget reaches the backend with an optional shared
 X-Api-Key secret; the backend then talks to Garmin as the one account whose
 tokens are on disk.
 """
+import html
 import os
+import secrets
 import threading
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Security
@@ -40,7 +42,7 @@ def _require_api_key(key: str | None = Security(_api_key_header)) -> None:
     expected = os.environ.get("API_KEY", "")
     if not expected:
         return  # unset → auth disabled (dev / trusted-network mode)
-    if key != expected:
+    if key is None or not secrets.compare_digest(key, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
@@ -58,9 +60,17 @@ def get_session() -> garmin.GarminSession:
             except FileNotFoundError:
                 raise HTTPException(
                     status_code=503,
-                    detail="Backend not authenticated. Run login.py to mint Garmin tokens.",
+                    detail="Backend not authenticated. Visit /setup to connect your Garmin account.",
                 )
-            _session = garmin.session_from_tokens(blob)
+            try:
+                _session = garmin.session_from_tokens(blob)
+            except Exception:
+                # Present but unusable (corrupt/truncated/expired) → defined 503,
+                # and leave _session unset so a later /setup can recover.
+                raise HTTPException(
+                    status_code=503,
+                    detail="Stored Garmin tokens are invalid. Visit /setup to reconnect.",
+                )
     return _session
 
 
@@ -81,12 +91,13 @@ _SETUP_STYLE = (
 
 def _check_setup_token(provided: str) -> None:
     expected = os.environ.get("SETUP_TOKEN", "")
-    if expected and provided != expected:
+    if expected and not secrets.compare_digest(provided or "", expected):
         raise HTTPException(status_code=403, detail="Invalid setup token")
 
 
 def _login_form(token: str, error: str = "") -> str:
-    err = f'<p class="err">{error}</p>' if error else ""
+    token = html.escape(token, quote=True)  # reflected into a value="" attribute
+    err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect your Garmin account</title><style>{_SETUP_STYLE}</style></head>
@@ -101,7 +112,9 @@ stored.</small></p></body></html>"""
 
 
 def _mfa_form(mfa_session_id: str, token: str, error: str = "") -> str:
-    err = f'<p class="err">{error}</p>' if error else ""
+    mfa_session_id = html.escape(mfa_session_id, quote=True)
+    token = html.escape(token, quote=True)
+    err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Enter security code</title><style>{_SETUP_STYLE}</style></head>

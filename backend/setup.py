@@ -8,6 +8,7 @@ unit-testable without HTTP.
 """
 import os
 import secrets
+import tempfile
 import threading
 import time
 from typing import Any, Callable
@@ -76,6 +77,18 @@ class SetupService:
         return SetupOutcome(done=True)
 
     def _save(self, blob: str) -> None:
-        with open(self._token_file, "w", encoding="utf-8") as fh:
-            fh.write(blob)
-        os.chmod(self._token_file, 0o600)  # tokens are sensitive
+        # Write to a temp file that is 0600 from creation (mkstemp), then
+        # atomically replace — no world-readable window, and a crash mid-write
+        # can't truncate the existing token file.
+        directory = os.path.dirname(self._token_file) or "."
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tokens-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(blob)
+            os.replace(tmp, self._token_file)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            raise

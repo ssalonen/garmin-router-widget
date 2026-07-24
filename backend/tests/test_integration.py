@@ -107,3 +107,85 @@ def test_integration_web_setup_then_serve(tmp_path, monkeypatch):
 
     main._reset_session()
     main._setup_service = None
+
+
+def test_integration_corrupt_blob_returns_503(tmp_path, monkeypatch):
+    """A present-but-invalid token blob is a defined 503, not a raw 500."""
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("CORRUPT-NOT-A-REAL-BLOB")
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(token_file))
+    main._reset_session()
+
+    def boom(blob):
+        raise ValueError("not a valid garth token")
+
+    monkeypatch.setattr("garmin.session_from_tokens", boom)
+    assert TestClient(main.app).get("/api/courses").status_code == 503
+    assert main._session is None  # failed load is not cached
+    main._reset_session()
+
+
+def test_integration_garmin_error_resets_and_reloads_session(tmp_path, monkeypatch):
+    """502 on a Garmin error must evict the cached session so the next request
+    rebuilds from disk (token-expiry recovery)."""
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("BLOB")
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(token_file))
+    main._reset_session()
+
+    bad = MagicMock()
+    bad.connectapi.side_effect = Exception("garmin down")
+    good = MagicMock()
+    good.connectapi.return_value = []
+    sessions = iter([GarminSession(bad), GarminSession(good)])
+    calls = {"n": 0}
+
+    def loader(blob):
+        calls["n"] += 1
+        return next(sessions)
+
+    monkeypatch.setattr("garmin.session_from_tokens", loader)
+    c = TestClient(main.app)
+
+    assert c.get("/api/courses").status_code == 502
+    assert calls["n"] == 1
+    # session was reset → second call rebuilds and succeeds
+    assert c.get("/api/courses").status_code == 200
+    assert calls["n"] == 2
+    main._reset_session()
+
+
+def test_integration_resetup_evicts_cached_session(tmp_path, monkeypatch):
+    """Re-running /setup while a session is already cached must swap it for the
+    freshly-authenticated one."""
+    import main
+    from garmin import LoginResult
+
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("BLOB1")
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(token_file))
+    main._reset_session()
+    main._setup_service = None
+
+    def loader(blob):
+        client = MagicMock()
+        client.connectapi.return_value = [
+            {"courseId": 1, "courseName": blob, "distanceInMeters": 0.0},
+        ]
+        return GarminSession(client)
+
+    monkeypatch.setattr("garmin.session_from_tokens", loader)
+    monkeypatch.setattr("garmin.begin_login",
+                        lambda email, password: LoginResult(token_blob="BLOB2"))
+    c = TestClient(main.app)
+
+    assert c.get("/api/courses").json()["courses"][0]["name"] == "BLOB1"
+    assert c.post("/setup/login",
+                  data={"email": "a@example.com", "password": "pw"}).status_code == 200
+    assert token_file.read_text() == "BLOB2"
+    assert c.get("/api/courses").json()["courses"][0]["name"] == "BLOB2"
+
+    main._reset_session()
+    main._setup_service = None

@@ -33,6 +33,22 @@ def test_courses_empty_list(client, fake_session):
     assert r.json()["courses"] == []
 
 
+def test_courses_forwards_limit_to_session(client, fake_session):
+    captured = {}
+
+    def get_courses(limit=10):
+        captured["limit"] = limit
+        return []
+
+    fake_session.get_courses = get_courses
+    assert client.get("/api/courses?limit=25").status_code == 200
+    assert captured["limit"] == 25
+
+
+def test_courses_limit_over_cap_is_422(client):
+    assert client.get("/api/courses?limit=999").status_code == 422
+
+
 def test_course_points_ascii85_roundtrip(client, fake_session):
     fake_session.points = [
         {"lat": 60.1699, "lon": 24.9384},

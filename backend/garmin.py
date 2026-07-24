@@ -59,6 +59,21 @@ def session_from_tokens(token_blob: str) -> "GarminSession":
     return GarminSession(client)
 
 
+def _first_present(d: dict, keys: tuple, default=None):
+    """First value among keys that is present AND non-null.
+
+    The unofficial course API varies field names and sometimes returns JSON
+    null; dict.get with a default only handles a *missing* key, so a present-
+    but-null value (e.g. distanceInMeters: null) would slip through and crash
+    (None / 1000) or become a null name. This treats null like missing.
+    """
+    for k in keys:
+        v = d.get(k)
+        if v is not None:
+            return v
+    return default
+
+
 class GarminSession:
     """Course reads for one authenticated Garmin account."""
 
@@ -70,17 +85,19 @@ class GarminSession:
             _COURSE_LIST_PATH,
             params={"start": 0, "limit": limit, "courseType": "ALL"},
         )
-        return [
-            {
-                "id": str(c["courseId"]),
-                "name": c.get("courseName", c.get("name", f"Course {c['courseId']}")),
-                "distanceKm": round(
-                    c.get("distanceInMeters", c.get("totalDistance", c.get("distance", 0))) / 1000, 2
-                ),
-            }
-            for c in data
-            if c.get("courseId")
-        ]
+        courses = []
+        for c in data:
+            course_id = c.get("courseId")
+            if not course_id:
+                continue
+            name = _first_present(c, ("courseName", "name"))
+            distance_m = _first_present(c, ("distanceInMeters", "totalDistance", "distance"), 0)
+            courses.append({
+                "id": str(course_id),
+                "name": name if name is not None else f"Course {course_id}",
+                "distanceKm": round(distance_m / 1000, 2),
+            })
+        return courses
 
     def get_course_points(self, course_id: str) -> list[dict]:
         response = self._client.connectapi(_COURSE_PATH.format(id=course_id))
