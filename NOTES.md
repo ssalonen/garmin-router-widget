@@ -6,22 +6,27 @@ Single-account setup: the backend talks to Garmin as **one** account (yours),
 using garth OAuth tokens minted once by `login.py`. No Garmin password lives in
 the running service, and MFA is supported.
 
-### Backend → Garmin Connect (one-time bootstrap)
+### Backend → Garmin Connect (one-time web bootstrap)
 
 ```
-uv run python login.py
+Browse to  <backend>/setup
    → enter Garmin email + password
    → [MFA] Garmin sends a code to your phone; enter it   ← phone-assisted
    → garth mints real Garmin OAuth1→OAuth2 tokens
    → token blob written to $GARMIN_TOKEN_FILE (0600)
+   → "✅ Connected"
 ```
 
 garth (via the `garminconnect` library) performs the genuine Garmin SSO OAuth
 token exchange; `return_on_mfa` + `resume_login` surface the phone-delivered MFA
-step. The backend loads the saved blob at first request (`session_from_tokens`)
-and reuses it; the OAuth1 token lasts ~1 year and the OAuth2 bearer
-auto-refreshes. When it finally expires, re-run `login.py`. The password is used
-only to mint tokens and is never stored.
+step (`/setup/login` → `/setup/mfa`). The backend loads the saved blob at first
+request (`session_from_tokens`) and reuses it; the OAuth1 token lasts ~1 year and
+the OAuth2 bearer auto-refreshes. When it finally expires, revisit `/setup`. The
+password is used only to mint tokens and is never stored.
+
+**Protect the setup page:** it writes the account tokens, so gate it with
+`SETUP_TOKEN` (then browse to `/setup?token=…`) and/or keep the backend off the
+public internet. With `SETUP_TOKEN` unset the page is open.
 
 Why not official Garmin OAuth? The Garmin Connect Developer Program's OAuth is
 restricted to approved business entities, not individuals — so for a personal
@@ -35,8 +40,9 @@ trusted network / VPN then).
 ### Configuration (backend env)
 | Var | Purpose |
 |---|---|
-| `GARMIN_TOKEN_FILE` | Path to the garth token blob written by `login.py` (default `garmin_tokens.blob`) |
+| `GARMIN_TOKEN_FILE` | Path to the garth token blob written by `/setup` (default `garmin_tokens.blob`) |
 | `API_KEY` | Optional shared secret required as `X-Api-Key`; unset disables the check |
+| `SETUP_TOKEN` | Optional gate for the `/setup` pages (`/setup?token=…`); unset leaves setup open |
 
 ### Multi-user, later
 If this ever needs to serve other people, the same `login.py`/token model

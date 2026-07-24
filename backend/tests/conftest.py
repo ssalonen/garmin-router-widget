@@ -1,11 +1,13 @@
 """Shared test fixtures.
 
-The single Garmin session is replaced by FakeSession via the get_session
-dependency override, so no test touches the network, credentials, or a token
-file. API_KEY defaults to unset (dev mode) unless a test sets it.
+The single Garmin session and the setup service are both replaced via
+dependency overrides, so no test touches the network, credentials, or a real
+token file. API_KEY defaults to unset (dev mode) unless a test sets it.
 """
 import pytest
 from fastapi.testclient import TestClient
+
+from garmin import LoginResult
 
 
 class FakeSession:
@@ -25,20 +27,60 @@ class FakeSession:
         return self.points
 
 
+class FakeAuth:
+    """Scriptable stand-in for the garmin auth seam used by SetupService."""
+
+    def __init__(self):
+        self.mfa = False
+        self.begin_error: Exception | None = None
+        self.begin_calls: list[tuple[str, str]] = []
+        self.resumed_with = None
+
+    def begin_login(self, email, password):
+        self.begin_calls.append((email, password))
+        if self.begin_error:
+            raise self.begin_error
+        if self.mfa:
+            return LoginResult(mfa_context=("live-client", {"csrf": "x"}))
+        return LoginResult(token_blob=f"blob::{email}")
+
+    def resume_login(self, mfa_context, mfa_code):
+        self.resumed_with = (mfa_context, mfa_code)
+        return "blob::after-mfa"
+
+
 @pytest.fixture
 def fake_session():
     return FakeSession()
 
 
-@pytest.fixture(autouse=True)
-def _dev_mode(monkeypatch):
-    # Default to auth-disabled unless a test opts in.
-    monkeypatch.delenv("API_KEY", raising=False)
+@pytest.fixture
+def fake_auth():
+    return FakeAuth()
 
 
 @pytest.fixture
-def client(fake_session):
-    from main import app, get_session
+def token_file(tmp_path):
+    return str(tmp_path / "tokens.blob")
+
+
+@pytest.fixture
+def setup_service(fake_auth, token_file):
+    from setup import PendingLogins, SetupService
+    return SetupService(token_file, auth=fake_auth, pending=PendingLogins())
+
+
+@pytest.fixture(autouse=True)
+def _dev_mode(monkeypatch):
+    # Default to auth/setup gates disabled unless a test opts in.
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("SETUP_TOKEN", raising=False)
+
+
+@pytest.fixture
+def client(fake_session, setup_service):
+    from main import app, get_session, get_setup_service
     app.dependency_overrides[get_session] = lambda: fake_session
+    app.dependency_overrides[get_setup_service] = lambda: setup_service
     yield TestClient(app)
     app.dependency_overrides.clear()
