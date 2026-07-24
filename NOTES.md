@@ -2,50 +2,45 @@
 
 ## Authentication
 
-The widget signs each user in with **their own** Garmin account using a real
-OAuth authorization-code flow, delivered to the watch by the phone.
+Single-account setup: the backend talks to Garmin as **one** account (yours),
+using garth OAuth tokens minted once by `login.py`. No Garmin password lives in
+the running service, and MFA is supported.
 
-### Flow
+### Backend → Garmin Connect (one-time bootstrap)
 
 ```
-Widget: Communications.makeOAuthRequest(<backend>/oauth/authorize, …)
-   │  Garmin Connect Mobile opens the authorize page in a webview on the phone
-   ▼
-Backend /oauth/authorize → login form
-   → user enters Garmin email + password
-   → [MFA] Garmin sends a code to the phone; user enters it (/oauth/mfa)
-   → garth mints that user's Garmin OAuth tokens, stored server-side
-   → 302 redirect_uri?code=…
-   │  Connect IQ intercepts the redirect and hands {code} to the widget
-   ▼
-Widget POST /api/token {code} → { access_token } → Application.Storage
-Widget GET  /api/courses  (X-Api-Key: access_token)
+uv run python login.py
+   → enter Garmin email + password
+   → [MFA] Garmin sends a code to your phone; enter it   ← phone-assisted
+   → garth mints real Garmin OAuth1→OAuth2 tokens
+   → token blob written to $GARMIN_TOKEN_FILE (0600)
 ```
 
-The token lands on the watch through the OAuth callback, so **no Connect IQ
-Store publication and no manual key entry are needed** — `makeOAuthRequest`
-works for sideloaded apps.
+garth (via the `garminconnect` library) performs the genuine Garmin SSO OAuth
+token exchange; `return_on_mfa` + `resume_login` surface the phone-delivered MFA
+step. The backend loads the saved blob at first request (`session_from_tokens`)
+and reuses it; the OAuth1 token lasts ~1 year and the OAuth2 bearer
+auto-refreshes. When it finally expires, re-run `login.py`. The password is used
+only to mint tokens and is never stored.
 
-### Backend → Garmin Connect
-garth (via the `garminconnect` library) performs the genuine Garmin SSO
-OAuth1→OAuth2 token exchange; `return_on_mfa` + `resume_login` surface the
-phone-delivered MFA step. Per-user token blobs are persisted under
-`TOKEN_STORE_DIR`, keyed by the opaque `api_key` the widget holds. No shared
-account credentials live in the running service.
+Why not official Garmin OAuth? The Garmin Connect Developer Program's OAuth is
+restricted to approved business entities, not individuals — so for a personal
+tool the garth token flow is the only way to read your own course list.
 
-**Trust note:** because Garmin exposes no consent-screen OAuth for the Courses
-API, the user's Garmin password is entered on a page the backend serves. It is
-used only to mint tokens via garth and is never stored.
+### Widget → Backend
+Optional shared secret: set `API_KEY` on the backend and the matching `apiKey`
+widget property. When `API_KEY` is unset the backend runs open (keep it on a
+trusted network / VPN then).
 
 ### Configuration (backend env)
 | Var | Purpose |
 |---|---|
-| `TOKEN_STORE_DIR` | Directory for persisted per-user garth token blobs |
-| `OAUTH_CLIENT_ID` | Expected client id (default `garmin-router-widget`) |
-| `OAUTH_REDIRECT_URIS` | Comma-separated allowlist; must include `<backendUrl>/oauth/callback` |
+| `GARMIN_TOKEN_FILE` | Path to the garth token blob written by `login.py` (default `garmin_tokens.blob`) |
+| `API_KEY` | Optional shared secret required as `X-Api-Key`; unset disables the check |
 
-### Widget settings
-`backendUrl` points at the backend. `apiKey` is now an optional manual override
-(handy for local testing): a non-placeholder value is treated as an
-already-issued token and skips the sign-in prompt; otherwise the widget shows
-"Sign in with Garmin".
+### Multi-user, later
+If this ever needs to serve other people, the same `login.py`/token model
+extends two ways: each user self-hosts their own backend instance (no shared
+trust), or — only if a central service is really wanted — a backend-fronted
+OAuth flow driving the widget's `Communications.makeOAuthRequest`. Out of scope
+for the single-account setup.

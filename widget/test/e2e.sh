@@ -64,18 +64,6 @@ sed -i \
     "$WORK/resources/settings/properties.xml"
 echo "[e2e] backendUrl patched → http://127.0.0.1:${PORT}"
 
-# The sign-in gate treats a non-placeholder apiKey as an already-issued token,
-# so the authenticated scenarios (A–C) proceed straight to the course list; the
-# mock server ignores X-Api-Key. Scenario D recompiles with an empty apiKey to
-# exercise the signed-out prompt.
-patch_api_key() {
-    sed -i \
-        "s|<property id=\"apiKey\" type=\"string\">.*</property>|<property id=\"apiKey\" type=\"string\">${1}</property>|" \
-        "$WORK/resources/settings/properties.xml"
-}
-patch_api_key "e2e-token"
-echo "[e2e] apiKey patched → e2e-token (authenticated scenarios)"
-
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
     echo "[e2e] cleanup"
@@ -102,12 +90,10 @@ fi
 # ── Compile widget (no -t: app mode, not unit-test mode) ────────────────────
 cd "$WORK"
 mkdir -p test-results/build
-compile_app() {
-    local out="$1"
-    monkeyc -f monkey.jungle -d "$DEVICE" -o "$out" -y "$CERT" -l 3
-    echo "[e2e] Compiled OK → $out"
-}
-compile_app test-results/build/app.prg
+monkeyc -f monkey.jungle -d "$DEVICE" \
+    -o test-results/build/app.prg \
+    -y "$CERT" -l 3
+echo "[e2e] Compiled OK → test-results/build/app.prg"
 
 # ── Start CIQ Simulator ──────────────────────────────────────────────────────
 DISPLAY=$DISP simulator &
@@ -167,14 +153,13 @@ start_mock() {
 }
 
 load_app() {
-    local prg="${1:-test-results/build/app.prg}"
     if [ -n "$APP_PID" ]; then
         kill "$APP_PID" 2>/dev/null || true
         sleep 1
     fi
-    DISPLAY=$DISP timeout 30s monkeydo "$prg" "$DEVICE" &
+    DISPLAY=$DISP timeout 30s monkeydo test-results/build/app.prg "$DEVICE" &
     APP_PID=$!
-    echo "[e2e] App loaded (PID=$APP_PID, prg=$prg)"
+    echo "[e2e] App loaded (PID=$APP_PID)"
 }
 
 wait_for_http() {
@@ -222,26 +207,6 @@ load_app
 wait_for_http
 activate
 screenshot "05_empty_courses"
-
-# ════════════════════════════════════════════════════════════════════════════
-# Scenario D — Signed out: OAuth sign-in prompt
-# Recompile with an empty apiKey so no token is present at startup → the widget
-# shows the "Sign in with Garmin" prompt instead of loading courses.
-# ════════════════════════════════════════════════════════════════════════════
-echo "[e2e] ── Scenario D: signed-out sign-in prompt ─────────────────────"
-patch_api_key ""
-compile_app test-results/build/app-signedout.prg
-start_mock normal
-load_app test-results/build/app-signedout.prg
-wait_for_http
-activate
-screenshot "06_signed_out"
-
-# Press START → begins the phone OAuth flow (no phone in CI, so it parks on the
-# "Check your phone..." state); capture that transition.
-press Return
-sleep 3
-screenshot "07_signing_in"
 
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── All scenarios complete ──────────────────────────────────"

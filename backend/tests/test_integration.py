@@ -1,23 +1,14 @@
-"""End-to-end OAuth journey through the real HTTP stack.
-
-Only the garth boundary is faked (conftest.FakeAuth). Everything else — routing,
-the authorize/login/mfa forms, the redirect with the auth code, the token
-exchange, and an authenticated course fetch — is exercised exactly as the widget
-+ Garmin Connect Mobile webview would drive it.
-
-    makeOAuthRequest → GET /oauth/authorize   (webview opens on phone)
-                       POST /oauth/login       (user enters Garmin creds)
-                       [POST /oauth/mfa]        (user enters phone code)
-                    → 302 redirect_uri?code=…  (CIQ intercepts, hands code to widget)
-    widget          → POST /api/token {code}   → access_token
-                    → GET  /api/courses (X-Api-Key: access_token)
+"""End-to-end through the real get_session path: token file on disk → garth
+session → course endpoint. Only the garth boundary (session_from_tokens) is
+faked, so the file read, session caching, and response encoding are all real.
 """
 import base64
-import re
 import struct
-from urllib.parse import parse_qs, urlparse
+from unittest.mock import MagicMock
 
-from .conftest import CLIENT_ID, REDIRECT_URI
+from fastapi.testclient import TestClient
+
+from garmin import GarminSession
 
 
 def _decode_ascii85_points(text: str) -> list[dict]:
@@ -31,98 +22,55 @@ def _decode_ascii85_points(text: str) -> list[dict]:
     ]
 
 
-def _authorize(client):
-    r = client.get(
-        f"/oauth/authorize?response_type=code&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}&state=st8"
-    )
-    assert r.status_code == 200
-    return r
+def test_integration_token_file_to_courses(tmp_path, monkeypatch):
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("THE-BLOB")
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(token_file))
+    main._reset_session()
 
-
-def _code_from_redirect(resp) -> str:
-    assert resp.status_code == 302
-    q = parse_qs(urlparse(resp.headers["location"]).query)
-    assert q["state"] == ["st8"]
-    return q["code"][0]
-
-
-def test_e2e_full_flow_no_mfa(client, fake_auth):
-    fake_auth.session.courses = [
-        {"id": "111222333", "name": "Morning Trail", "distanceKm": 12.3},
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = [
+        {"courseId": 111222333, "courseName": "Morning Trail", "distanceInMeters": 12345.0},
     ]
-    fake_auth.session.points = [{"lat": 60.1699, "lon": 24.9384}]
+    captured = {}
 
-    _authorize(client)
+    def fake_session_from_tokens(blob):
+        captured["blob"] = blob
+        return GarminSession(fake_client)
 
-    login = client.post(
-        "/oauth/login",
-        data={"email": "rider@example.com", "password": "pw",
-              "redirect_uri": REDIRECT_URI, "state": "st8"},
-        follow_redirects=False,
-    )
-    code = _code_from_redirect(login)
+    monkeypatch.setattr("garmin.session_from_tokens", fake_session_from_tokens)
 
-    token = client.post("/api/token", json={"code": code}).json()["access_token"]
-    hdr = {"X-Api-Key": token}
+    r = TestClient(main.app).get("/api/courses")
+    assert r.status_code == 200
+    assert r.json()["courses"][0]["name"] == "Morning Trail"
+    assert captured["blob"] == "THE-BLOB"  # the on-disk blob was loaded
+    main._reset_session()
 
-    courses = client.get("/api/courses", headers=hdr)
-    assert courses.status_code == 200
-    assert courses.json()["courses"][0]["name"] == "Morning Trail"
 
-    points = client.get("/api/course/111222333", headers=hdr)
-    assert points.status_code == 200
-    decoded = _decode_ascii85_points(points.text)
+def test_integration_course_points_ascii85(tmp_path, monkeypatch):
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("THE-BLOB")
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(token_file))
+    main._reset_session()
+
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = {"geoPoints": [
+        {"latitude": 60.1699, "longitude": 24.9384},
+    ]}
+    monkeypatch.setattr("garmin.session_from_tokens", lambda blob: GarminSession(fake_client))
+
+    r = TestClient(main.app).get("/api/course/111222333")
+    assert r.status_code == 200
+    decoded = _decode_ascii85_points(r.text)
     assert abs(decoded[0]["lat"] - 60.1699) < 1e-6
+    main._reset_session()
 
 
-def test_e2e_full_flow_with_mfa(client, fake_auth):
-    fake_auth.mfa = True
-    fake_auth.session.courses = [{"id": "9", "name": "MFA Route", "distanceKm": 3.0}]
-
-    _authorize(client)
-
-    login = client.post(
-        "/oauth/login",
-        data={"email": "rider@example.com", "password": "pw",
-              "redirect_uri": REDIRECT_URI, "state": "st8"},
-        follow_redirects=False,
-    )
-    assert login.status_code == 200  # MFA form, not a redirect
-    sid = re.search(r'name="mfa_session_id"\s+value="([^"]+)"', login.text).group(1)
-
-    mfa = client.post(
-        "/oauth/mfa",
-        data={"mfa_code": "654321", "mfa_session_id": sid,
-              "redirect_uri": REDIRECT_URI, "state": "st8"},
-        follow_redirects=False,
-    )
-    code = _code_from_redirect(mfa)
-    assert fake_auth.resumed_with[1] == "654321"
-
-    token = client.post("/api/token", json={"code": code}).json()["access_token"]
-    courses = client.get("/api/courses", headers={"X-Api-Key": token})
-    assert courses.status_code == 200
-    assert courses.json()["courses"][0]["name"] == "MFA Route"
-
-
-def test_e2e_two_users_get_isolated_sessions(client, provider, fake_auth):
-    """Two independent logins mint two distinct api_keys → two token blobs."""
-    code1 = _code_from_redirect(client.post(
-        "/oauth/login",
-        data={"email": "a@example.com", "password": "pw",
-              "redirect_uri": REDIRECT_URI, "state": "st8"},
-        follow_redirects=False,
-    ))
-    code2 = _code_from_redirect(client.post(
-        "/oauth/login",
-        data={"email": "b@example.com", "password": "pw",
-              "redirect_uri": REDIRECT_URI, "state": "st8"},
-        follow_redirects=False,
-    ))
-    key1 = client.post("/api/token", json={"code": code1}).json()["access_token"]
-    key2 = client.post("/api/token", json={"code": code2}).json()["access_token"]
-    assert key1 != key2
-    # each key resolves to its own stored blob
-    assert provider._tokens.get(key1) == "blob::a@example.com"
-    assert provider._tokens.get(key2) == "blob::b@example.com"
+def test_integration_missing_token_file_returns_503(tmp_path, monkeypatch):
+    import main
+    monkeypatch.setattr(main, "_TOKEN_FILE", str(tmp_path / "does-not-exist.blob"))
+    main._reset_session()
+    assert TestClient(main.app).get("/api/courses").status_code == 503
+    main._reset_session()

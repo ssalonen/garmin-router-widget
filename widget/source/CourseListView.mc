@@ -15,7 +15,6 @@ const FOOTER_Y    = 183;
 class CourseListView extends WatchUi.View {
 
     var _loader  as CourseLoader;
-    var _oauthClient as OAuthClient;
     var _logger  as Logger;
     var _debugMode as Lang.Boolean;
 
@@ -28,16 +27,13 @@ class CourseListView extends WatchUi.View {
     var _errorCode      as Lang.Number;
     var _lastDurationMs as Lang.Number;
 
-    function initialize(loader as CourseLoader, oauthClient as OAuthClient, logger as Logger,
-                        initialToken as Lang.String?, debugMode as Lang.Object?) {
+    function initialize(loader as CourseLoader, logger as Logger, debugMode as Lang.Object?) {
         View.initialize();
-        _loader      = loader;
-        _oauthClient = oauthClient;
-        _logger      = logger;
-        _debugMode   = (debugMode instanceof Lang.Boolean) ? (debugMode as Lang.Boolean) : false;
+        _loader    = loader;
+        _logger    = logger;
+        _debugMode = (debugMode instanceof Lang.Boolean) ? (debugMode as Lang.Boolean) : false;
 
-        // No token yet → prompt sign-in instead of firing a doomed request.
-        state           = (initialToken == null) ? STATE_SIGNED_OUT : STATE_LOADING_LIST;
+        state           = STATE_LOADING_LIST;
         _courses        = null;
         _selectedIdx    = 0;
         _navigatingName = null;
@@ -48,32 +44,7 @@ class CourseListView extends WatchUi.View {
 
     function onShow() as Void {
         if ($ has :_IS_TEST_BUILD) { return; }
-        if (state == STATE_SIGNED_OUT) { return; }  // wait for the user to sign in
         _loadCourseList();
-    }
-
-    // ---- OAuth sign-in (called by delegate) -----------------------------
-
-    function signIn() as Void {
-        if (state != STATE_SIGNED_OUT) { return; }
-        state = STATE_SIGNING_IN;
-        _errorMsg = null;
-        _logger.info("Sign-in requested", null);
-        _oauthClient.beginSignIn(method(:onSignInComplete));
-        WatchUi.requestUpdate();
-    }
-
-    function onSignInComplete(success as Lang.Boolean, token as Lang.String?) as Void {
-        if (success && token != null) {
-            _loader.setApiKey(token as Lang.String);
-            _logger.info("Sign-in complete", null);
-            _loadCourseList();
-        } else {
-            state      = STATE_SIGNED_OUT;
-            _errorMsg  = "Sign-in failed";
-            _logger.error("Sign-in failed", null);
-        }
-        WatchUi.requestUpdate();
     }
 
     // ---- public actions (called by delegate) ----------------------------
@@ -206,13 +177,7 @@ class CourseListView extends WatchUi.View {
 
         _drawHeader(dc);
 
-        if (state == STATE_SIGNED_OUT) {
-            _drawSignedOut(dc);
-            _drawFooter(dc, "START: sign in  BACK: exit");
-        } else if (state == STATE_SIGNING_IN) {
-            _drawSigningIn(dc);
-            _drawFooter(dc, "BACK: cancel");
-        } else if (state == STATE_LOADING_LIST || state == STATE_LOADING_COURSE) {
+        if (state == STATE_LOADING_LIST || state == STATE_LOADING_COURSE) {
             _drawLoading(dc);
         } else if (state == STATE_LIST_READY) {
             _drawList(dc);
@@ -231,26 +196,6 @@ class CourseListView extends WatchUi.View {
         dc.drawText(5, 4, Graphics.FONT_SMALL, "Route Loader", Graphics.TEXT_JUSTIFY_LEFT);
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawLine(0, LIST_TOP - 2, dc.getWidth(), LIST_TOP - 2);
-    }
-
-    function _drawSignedOut(dc as Graphics.Dc) as Void {
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(dc.getWidth() / 2, 60, Graphics.FONT_SMALL,
-            "Sign in with Garmin", Graphics.TEXT_JUSTIFY_CENTER);
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(dc.getWidth() / 2, 92, Graphics.FONT_TINY,
-            "Approve on your phone", Graphics.TEXT_JUSTIFY_CENTER);
-        if (_errorMsg != null) {
-            dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(dc.getWidth() / 2, 116, Graphics.FONT_TINY,
-                _errorMsg, Graphics.TEXT_JUSTIFY_CENTER);
-        }
-    }
-
-    function _drawSigningIn(dc as Graphics.Dc) as Void {
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(dc.getWidth() / 2, 80, Graphics.FONT_SMALL,
-            "Check your phone...", Graphics.TEXT_JUSTIFY_CENTER);
     }
 
     function _drawLoading(dc as Graphics.Dc) as Void {
@@ -346,8 +291,7 @@ class CourseListView extends WatchUi.View {
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
 
         var stateLabels = [
-            "LOADING_LIST", "LIST_READY", "LOADING_COURSE", "NAVIGATING", "ERROR",
-            "SIGNED_OUT", "SIGNING_IN"
+            "LOADING_LIST", "LIST_READY", "LOADING_COURSE", "NAVIGATING", "ERROR"
         ];
         var stateLabel = (state >= 0 && state < stateLabels.size())
             ? stateLabels[state].toString()
@@ -414,7 +358,6 @@ class CourseListDelegate extends WatchUi.BehaviorDelegate {
 
         if (key == WatchUi.KEY_ENTER || key == WatchUi.KEY_START) {
             var s = _view.state;
-            if (s == STATE_SIGNED_OUT)  { _view.signIn();       return true; }
             if (s == STATE_LIST_READY)  { _view.selectCourse(); return true; }
             if (s == STATE_ERROR)       { _view.refresh();      return true; }
             return false;

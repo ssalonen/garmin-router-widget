@@ -1,5 +1,5 @@
-"""Course endpoints now require a per-user api_key (X-Api-Key) that resolves to
-a Garmin session. These tests drive the HTTP layer with a seeded key."""
+"""Course endpoints backed by the single Garmin session, plus the optional
+shared X-Api-Key secret."""
 import base64
 import struct
 
@@ -14,51 +14,31 @@ def _decode_ascii85_points(text: str) -> list[dict]:
     return points
 
 
-# ── auth gate ────────────────────────────────────────────────────────────────
+# ── happy path (dev mode: no API_KEY) ────────────────────────────────────────
 
-def test_courses_without_api_key_is_401(client):
-    assert client.get("/api/courses").status_code == 401
-
-
-def test_courses_with_unknown_api_key_is_401(client):
-    r = client.get("/api/courses", headers={"X-Api-Key": "bogus"})
-    assert r.status_code == 401
-
-
-def test_course_points_without_api_key_is_401(client):
-    assert client.get("/api/course/123").status_code == 401
-
-
-# ── happy path ────────────────────────────────────────────────────────────────
-
-def test_courses_with_valid_key_returns_list(client, seeded_session):
-    api_key, session = seeded_session
-    session.courses = [
+def test_courses_returns_list(client, fake_session):
+    fake_session.courses = [
         {"id": "111222333", "name": "Morning Trail", "distanceKm": 12.3},
         {"id": "444555666", "name": "Lakeside Loop", "distanceKm": 8.1},
     ]
-    r = client.get("/api/courses", headers={"X-Api-Key": api_key})
+    r = client.get("/api/courses")
     assert r.status_code == 200
-    data = r.json()
-    assert len(data["courses"]) == 2
-    assert data["courses"][0]["id"] == "111222333"
+    assert r.json()["courses"][0]["id"] == "111222333"
 
 
-def test_courses_empty_list(client, seeded_session):
-    api_key, session = seeded_session
-    session.courses = []
-    r = client.get("/api/courses", headers={"X-Api-Key": api_key})
+def test_courses_empty_list(client, fake_session):
+    fake_session.courses = []
+    r = client.get("/api/courses")
     assert r.status_code == 200
     assert r.json()["courses"] == []
 
 
-def test_course_points_ascii85_roundtrip(client, seeded_session):
-    api_key, session = seeded_session
-    session.points = [
+def test_course_points_ascii85_roundtrip(client, fake_session):
+    fake_session.points = [
         {"lat": 60.1699, "lon": 24.9384},
         {"lat": -33.8688, "lon": 151.2093},
     ]
-    r = client.get("/api/course/111", headers={"X-Api-Key": api_key})
+    r = client.get("/api/course/111")
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
     decoded = _decode_ascii85_points(r.text)
@@ -66,17 +46,33 @@ def test_course_points_ascii85_roundtrip(client, seeded_session):
     assert abs(decoded[1]["lon"] - 151.2093) < 1e-6
 
 
-# ── upstream Garmin failure ────────────────────────────────────────────────────
+# ── upstream Garmin failure → 502 ────────────────────────────────────────────
 
-def test_courses_garmin_error_returns_502(client, seeded_session):
-    api_key, session = seeded_session
-    session.raise_exc = Exception("Garmin API error")
-    r = client.get("/api/courses", headers={"X-Api-Key": api_key})
-    assert r.status_code == 502
+def test_courses_garmin_error_returns_502(client, fake_session):
+    fake_session.raise_exc = Exception("Garmin API error")
+    assert client.get("/api/courses").status_code == 502
 
 
-def test_course_points_garmin_error_returns_502(client, seeded_session):
-    api_key, session = seeded_session
-    session.raise_exc = Exception("Course not found")
-    r = client.get("/api/course/999", headers={"X-Api-Key": api_key})
-    assert r.status_code == 502
+def test_course_points_garmin_error_returns_502(client, fake_session):
+    fake_session.raise_exc = Exception("Course not found")
+    assert client.get("/api/course/999").status_code == 502
+
+
+# ── shared-secret API key gate ───────────────────────────────────────────────
+
+def test_api_key_required_when_set(client, monkeypatch):
+    monkeypatch.setenv("API_KEY", "s3cret")
+    assert client.get("/api/courses").status_code == 401
+
+
+def test_api_key_accepts_correct_key(client, fake_session, monkeypatch):
+    monkeypatch.setenv("API_KEY", "s3cret")
+    fake_session.courses = []
+    r = client.get("/api/courses", headers={"X-Api-Key": "s3cret"})
+    assert r.status_code == 200
+
+
+def test_api_key_rejects_wrong_key(client, monkeypatch):
+    monkeypatch.setenv("API_KEY", "s3cret")
+    r = client.get("/api/courses", headers={"X-Api-Key": "nope"})
+    assert r.status_code == 401

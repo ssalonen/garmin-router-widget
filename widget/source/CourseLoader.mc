@@ -21,11 +21,6 @@ class CourseLoader {
         _pendingCallback = null;
     }
 
-    // Update the bearer sent as X-Api-Key after an OAuth sign-in completes.
-    function setApiKey(apiKey as Lang.String) as Void {
-        _headers = {"X-Api-Key" => apiKey};
-    }
-
     // Calls callback.invoke(responseCode, data, durationMs)
     function fetchCourseList(limit as Lang.Object?, callback as Lang.Method) as Void {
         _pendingCallback = callback;
