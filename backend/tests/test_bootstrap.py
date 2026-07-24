@@ -5,8 +5,8 @@ then phone MFA) and that a completed login writes the single token file.
 """
 import pytest
 
+from bootstrap import ExpiredLogin, PendingLogins, SetupService
 from garmin import LoginResult
-from setup import ExpiredLogin, PendingLogins, SetupService
 
 
 class FakeAuth:
@@ -115,3 +115,15 @@ def test_pending_expires():
     sid = p.put(object())
     clock["t"] = 61
     assert p.pop(sid) is None
+
+
+def test_pending_sweeps_abandoned_sessions_on_put():
+    # An abandoned MFA (never popped) must not linger once expired: a later put
+    # sweeps it, so the map does not grow unbounded.
+    clock = {"t": 0.0}
+    p = PendingLogins(ttl_seconds=60, now=lambda: clock["t"])
+    p.put(object())            # abandoned
+    assert len(p._sessions) == 1
+    clock["t"] = 61
+    p.put(object())            # triggers sweep of the expired one
+    assert len(p._sessions) == 1  # only the fresh entry remains

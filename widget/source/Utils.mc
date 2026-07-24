@@ -121,9 +121,10 @@ function httpErrorString(code as Lang.Object?) as Lang.String {
     if (c == -400) { return "No BLE data";       }
     if (c == -401) { return "Connection lost";   }
     if (c == -402) { return "Network error";     }
+    if (c == 401)  { return "Bad API key";       }  // widget↔backend secret mismatch
     if (c == 404)  { return "Course not found";  }
     if (c == 502)  { return "Backend error";     }
-    if (c == 503)  { return "Garmin login expired"; }  // backend needs /setup
+    if (c == 503)  { return "Garmin not connected"; }  // backend needs /setup (unset or expired)
     if (c > 0)     { return "HTTP " + c;         }
     return "Error " + c;
 }

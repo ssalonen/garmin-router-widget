@@ -4,7 +4,7 @@
     place that drives garth's SSO OAuth flow. Returns opaque token blobs so the
     rest of the app never touches credentials.
   - GarminSession: course reads against an already-authenticated client.
-  - Pure encoders (unchanged): wire format for the widget.
+  - Pure encoders: the wire format for the widget.
 
 garth performs the real Garmin OAuth1+OAuth2 token exchange under the hood;
 `return_on_mfa` surfaces the phone-delivered MFA step so the web login flow can

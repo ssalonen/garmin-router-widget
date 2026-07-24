@@ -8,8 +8,9 @@ __pycache__/
 # Backend
 backend/*.db
 backend/.env
-backend/your_data/
-backend/demo.py
+# Garmin token blobs written by /setup — never commit (full-account credentials)
+*.blob
+.tokens-*
 
 # Connect IQ compiled output
 widget/bin/*.prg

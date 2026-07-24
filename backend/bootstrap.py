@@ -1,10 +1,9 @@
 """Web bootstrap for the single Garmin account.
 
-Drives the same garth login as before, but from a browser page instead of a
-CLI: enter Garmin email/password, complete phone MFA if prompted, and the
-resulting token blob is written to the token file the backend reads. Transport
-(the HTML forms and routes) lives in main.py; this module is the logic and is
-unit-testable without HTTP.
+Drives the garth login from a browser page: enter Garmin email/password,
+complete phone MFA if prompted, and the resulting token blob is written to the
+token file the backend reads. Transport (HTML forms and routes) lives in
+routes_setup.py; this module is the logic and is unit-testable without HTTP.
 """
 import os
 import secrets
@@ -35,6 +34,7 @@ class PendingLogins:
     def put(self, context: Any) -> str:
         sid = secrets.token_urlsafe(24)
         with self._lock:
+            self._sweep()  # reclaim abandoned MFA sessions so the map stays bounded
             self._sessions[sid] = (context, self._now() + self._ttl)
         return sid
 
@@ -47,6 +47,15 @@ class PendingLogins:
         if self._now() > expires_at:
             return None
         return context
+
+    def _sweep(self) -> None:
+        # Caller holds _lock. Drop entries whose TTL has elapsed — otherwise an
+        # abandoned MFA (user never submits the code) would pin a live garth
+        # client until process exit.
+        now = self._now()
+        expired = [sid for sid, (_, exp) in self._sessions.items() if now > exp]
+        for sid in expired:
+            del self._sessions[sid]
 
 
 class SetupOutcome:

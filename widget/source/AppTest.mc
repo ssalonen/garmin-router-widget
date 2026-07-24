@@ -259,10 +259,16 @@ function testHttpErrorString_positiveHttpCode(logger as Test.Logger) as Lang.Boo
 }
 
 (:test)
-function testHttpErrorString_authExpired503(logger as Test.Logger) as Lang.Boolean {
-    // Backend returns 503 when its Garmin tokens are expired/invalid and the
-    // account must be reconnected via /setup.
-    Test.assertEqual(httpErrorString(503), "Garmin login expired");
+function testHttpErrorString_notConnected503(logger as Test.Logger) as Lang.Boolean {
+    // Backend returns 503 when it isn't connected to Garmin — either not yet
+    // set up or the tokens expired. Either way: reconnect via /setup.
+    Test.assertEqual(httpErrorString(503), "Garmin not connected");
+    return true;
+}
+
+(:test)
+function testHttpErrorString_badApiKey401(logger as Test.Logger) as Lang.Boolean {
+    Test.assertEqual(httpErrorString(401), "Bad API key");
     return true;
 }
 
