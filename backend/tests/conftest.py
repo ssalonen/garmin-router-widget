@@ -78,6 +78,19 @@ def _dev_mode(monkeypatch):
     monkeypatch.delenv("SETUP_TOKEN", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _clean_module_state():
+    # Reset the process-global session/setup-service caches around every test so
+    # a session built by the real get_session (integration tests) can't leak
+    # into a later test.
+    import deps
+    deps.reset_session()
+    deps._setup_service = None
+    yield
+    deps.reset_session()
+    deps._setup_service = None
+
+
 @pytest.fixture
 def client(fake_session, setup_service):
     import deps

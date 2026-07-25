@@ -14,8 +14,10 @@ from fastapi.security.api_key import APIKeyHeader
 import garmin
 from bootstrap import SetupService
 
-# Path to the garth token blob written by /setup. Read at call time so it is
-# configurable per-process and in tests.
+# Path to the garth token blob written by /setup, resolved once at import from
+# GARMIN_TOKEN_FILE. (Unlike API_KEY/SETUP_TOKEN, which are read per-request,
+# this is fixed at startup; tests override get_session/get_setup_service or
+# monkeypatch this module attribute directly.)
 TOKEN_FILE = os.environ.get("GARMIN_TOKEN_FILE", "garmin_tokens.blob")
 
 # 503 detail shared by every "reconnect the Garmin account" path (no tokens,

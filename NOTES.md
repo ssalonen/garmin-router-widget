@@ -49,8 +49,10 @@ sideloaded `.prg`, so treat it as a coarse gate, not real auth.
 
 ### Operational endpoints
 - `GET /health` — liveness (process up, no Garmin dependency).
-- `GET /ready` — readiness: 200 when the Garmin session is loadable, 503 when
-  the account needs (re)connecting via `/setup`.
+- `GET /ready` — readiness: 200 when a token blob is present and loads, 503 when
+  the account needs connecting via `/setup`. Reflects "is the backend set up",
+  not "are the tokens still valid" — it doesn't call Garmin, and expiry only
+  surfaces on a real course request (503).
 
 ## Deployment requirements
 
