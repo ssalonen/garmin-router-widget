@@ -12,17 +12,18 @@ _STYLE = (
 )
 
 
-def login_form(token: str, error: str = "") -> str:
-    token = html.escape(token, quote=True)  # reflected into a value="" attribute
+def login_form(error: str = "") -> str:
+    # The setup token is a form field (POST), never a URL query param, so it
+    # doesn't leak into access logs / history / Referer.
     err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect your Garmin account</title><style>{_STYLE}</style></head>
 <body><h2>Connect your Garmin account</h2>{err}
 <form method="post" action="/setup/login">
-<input type="email" name="email" placeholder="Garmin email" required autofocus>
-<input type="password" name="password" placeholder="Password" required>
-<input type="hidden" name="token" value="{token}">
+<input type="password" name="token" placeholder="Setup token" required autofocus>
+<input type="email" name="email" placeholder="Garmin email" required>
+<input type="password" name="password" placeholder="Garmin password" required>
 <button type="submit">Connect</button></form>
 <p><small>Your password is used only to mint Garmin access tokens and is never
 stored.</small></p></body></html>"""

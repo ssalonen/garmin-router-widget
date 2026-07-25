@@ -1,14 +1,14 @@
 """Web bootstrap routes: one-time Garmin sign-in (email/password + phone MFA).
 
 Default-closed: /setup is disabled unless SETUP_TOKEN is configured, since these
-pages accept a Garmin password and overwrite the account's tokens. When enabled,
-every route requires the token. (The token appears in the GET URL — see NOTES.md
-on running this behind TLS / off the public internet.)
+pages accept a Garmin password and overwrite the account's tokens. The setup
+token is submitted as a form field on POST (never a URL query param), so it does
+not leak into access logs / history. GET /setup just serves the form.
 """
 import os
 import secrets
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse
 
 import templates
@@ -18,21 +18,28 @@ from deps import get_setup_service, reset_session
 router = APIRouter(tags=["setup"])
 
 
-def require_setup_token(provided: str) -> None:
-    expected = os.environ.get("SETUP_TOKEN", "")
-    if not expected:
+def _setup_secret() -> str:
+    return os.environ.get("SETUP_TOKEN", "")
+
+
+def _ensure_setup_enabled() -> None:
+    if not _setup_secret():
         raise HTTPException(
             status_code=403,
             detail="Setup is disabled. Set SETUP_TOKEN on the backend to enable /setup.",
         )
-    if not secrets.compare_digest(provided or "", expected):
+
+
+def require_setup_token(provided: str) -> None:
+    _ensure_setup_enabled()
+    if not secrets.compare_digest(provided or "", _setup_secret()):
         raise HTTPException(status_code=403, detail="Invalid setup token")
 
 
 @router.get("/setup", response_class=HTMLResponse)
-def setup_page(token: str = Query(default="")):
-    require_setup_token(token)
-    return HTMLResponse(templates.login_form(token))
+def setup_page():
+    _ensure_setup_enabled()
+    return HTMLResponse(templates.login_form())
 
 
 @router.post("/setup/login")
@@ -47,7 +54,7 @@ def setup_login(
         outcome = service.begin(email, password)
     except Exception:
         return HTMLResponse(
-            templates.login_form(token, error="Sign-in failed. Check your credentials."),
+            templates.login_form(error="Sign-in failed. Re-enter the setup token and your credentials."),
             status_code=401,
         )
     if not outcome.done:

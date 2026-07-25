@@ -9,8 +9,8 @@ password lives in the running service, and MFA is supported.
 ### Backend → Garmin Connect (one-time web bootstrap)
 
 ```
-Browse to  <backend>/setup?token=$SETUP_TOKEN
-   → enter Garmin email + password
+Browse to  <backend>/setup
+   → enter setup token + Garmin email + password
    → [MFA] Garmin sends a code to your phone; enter it   ← phone-assisted
    → garth mints real Garmin OAuth1→OAuth2 tokens
    → token blob written to $GARMIN_TOKEN_FILE (0600, atomic)
@@ -65,9 +65,8 @@ These are real constraints, not asides:
   point the widget's `backendUrl` at `https://`.
 - **`/setup` is default-closed and privileged.** It accepts a Garmin password and
   overwrites the account tokens; keep `SETUP_TOKEN` set and the backend off the
-  public internet. The token appears in the `/setup?token=…` URL, so it can land
-  in access logs / browser history — rotate it if that matters, and prefer a
-  private network for the bootstrap.
+  public internet. The setup token is entered as a form field (POST), so it does
+  not appear in URLs, access logs, or browser history.
 - **Persist the token file.** Point `GARMIN_TOKEN_FILE` at a mounted volume (the
   Docker image uses `/data`), else the tokens vanish on container recreation and
   you must re-run `/setup`.
