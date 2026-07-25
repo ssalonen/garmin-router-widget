@@ -254,7 +254,21 @@ function testHttpErrorString_knownCodes(logger as Test.Logger) as Lang.Boolean {
 
 (:test)
 function testHttpErrorString_positiveHttpCode(logger as Test.Logger) as Lang.Boolean {
-    Test.assertEqual(httpErrorString(503), "HTTP 503");
+    Test.assertEqual(httpErrorString(500), "HTTP 500");
+    return true;
+}
+
+(:test)
+function testHttpErrorString_notConnected503(logger as Test.Logger) as Lang.Boolean {
+    // Backend returns 503 when it isn't connected to Garmin — either not yet
+    // set up or the tokens expired. Either way: reconnect via /setup.
+    Test.assertEqual(httpErrorString(503), "Garmin not connected");
+    return true;
+}
+
+(:test)
+function testHttpErrorString_badApiKey401(logger as Test.Logger) as Lang.Boolean {
+    Test.assertEqual(httpErrorString(401), "Bad API key");
     return true;
 }
 

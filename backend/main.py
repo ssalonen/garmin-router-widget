@@ -1,40 +1,17 @@
-import os
+"""Garmin Route Loader backend — application assembly.
 
-from fastapi import FastAPI, HTTPException, Query, Security
-from fastapi.responses import PlainTextResponse, Response
-from fastapi.security.api_key import APIKeyHeader
+Single-account course proxy: authenticates to Garmin with garth tokens minted
+once via /setup (no password in env, MFA supported), and serves the widget's
+course list/points. Wiring lives in deps.py; routes are split across
+routes_setup / routes_courses / routes_health.
+"""
+from fastapi import FastAPI
 
-import garmin
+import routes_courses
+import routes_health
+import routes_setup
 
 app = FastAPI(title="Garmin Route Loader Backend")
-
-_API_KEY = os.environ.get("API_KEY", "")
-_api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=False)
-
-
-def _require_api_key(key: str | None = Security(_api_key_header)) -> None:
-    if not _API_KEY:
-        return  # API_KEY not set → auth disabled (dev mode)
-    if key != _API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-
-
-@app.get("/api/courses")
-def list_courses(limit: int = Query(default=10, le=50), _: None = Security(_require_api_key)):
-    try:
-        courses = garmin.get_courses(limit=limit)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {"courses": courses}
-
-
-@app.get("/api/course/{course_id}", response_class=PlainTextResponse)
-def get_course(course_id: str, _: None = Security(_require_api_key)):
-    try:
-        points = garmin.get_course_points(course_id)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return PlainTextResponse(
-        content=garmin.encode_points_ascii85(points),
-        media_type="text/plain; charset=ascii",
-    )
+app.include_router(routes_health.router)
+app.include_router(routes_setup.router)
+app.include_router(routes_courses.router)

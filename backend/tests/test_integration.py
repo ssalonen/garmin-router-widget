@@ -1,80 +1,206 @@
-"""
-Integration tests — exercise the full HTTP request/response pipeline.
+"""End-to-end through the real get_session path: token file on disk → garth
+session → course endpoint. Only the garth boundary (session_from_tokens) is
+faked, so the file read, session caching, and response encoding are all real.
 
-These patch at the garmin function level (not the Garmin Connect HTTP level),
-so they test: routing + serialisation + response format, without needing
-real Garmin credentials.
+State (token file, cached session, setup-service) lives in deps; these tests
+patch it there and drive the real app.
 """
 import base64
 import struct
-import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock
+
 from fastapi.testclient import TestClient
-from main import app
 
+from garmin import GarminSession
 
-@pytest.fixture
-def http_client():
-    return TestClient(app)
+SETUP_TOKEN = "test-setup-token"
 
 
 def _decode_ascii85_points(text: str) -> list[dict]:
-    """Python mirror of the widget's decodeAscii85 + decodeBinaryPoints."""
     data = base64.a85decode(text, adobe=False)
-    points = []
-    for i in range(0, len(data) - 7, 8):
-        lat = struct.unpack(">i", data[i:i+4])[0] / 1e7
-        lon = struct.unpack(">i", data[i+4:i+8])[0] / 1e7
-        points.append({"lat": lat, "lon": lon})
-    return points
-
-
-# Coordinates chosen to exercise positive, negative, and high-byte values
-INTEGRATION_POINTS = [
-    {"lat":  60.1699, "lon":  24.9384},   # Helsinki, all positive
-    {"lat": -33.8688, "lon": 151.2093},   # Sydney, negative lat + lon > 127
-    {"lat":  -1.2921, "lon": -36.8219},   # Nairobi-ish, both negative
-]
-
-
-def test_integration_course_ascii85_roundtrip(http_client):
-    """get_course_points → ASCII85 text/plain response → decoded coords match input."""
-    with patch("garmin.get_course_points", return_value=INTEGRATION_POINTS):
-        response = http_client.get("/api/course/123456789")
-
-    assert response.status_code == 200
-    assert "text/plain" in response.headers["content-type"]
-    # 3 points × 10 ASCII85 chars each = 30 chars
-    assert len(response.text) == len(INTEGRATION_POINTS) * 10
-
-    decoded = _decode_ascii85_points(response.text)
-    for original, got in zip(INTEGRATION_POINTS, decoded):
-        assert got["lat"] == pytest.approx(original["lat"], abs=1e-6)
-        assert got["lon"] == pytest.approx(original["lon"], abs=1e-6)
-
-
-def test_integration_course_empty_route(http_client):
-    """Zero points encodes to empty string."""
-    with patch("garmin.get_course_points", return_value=[]):
-        response = http_client.get("/api/course/123456789")
-    assert response.status_code == 200
-    assert response.text == ""
-
-
-def test_integration_courses_list_shape(http_client):
-    """GET /api/courses returns exactly the shape the widget parser expects."""
-    fake_courses = [
-        {"id": "111222333", "name": "Morning Trail", "distanceKm": 12.3},
-        {"id": "444555666", "name": "Lakeside Loop",  "distanceKm":  8.1},
+    return [
+        {
+            "lat": struct.unpack(">i", data[i:i+4])[0] / 1e7,
+            "lon": struct.unpack(">i", data[i+4:i+8])[0] / 1e7,
+        }
+        for i in range(0, len(data) - 7, 8)
     ]
-    with patch("garmin.get_courses", return_value=fake_courses):
-        response = http_client.get("/api/courses")
 
-    assert response.status_code == 200
-    data = response.json()
-    assert "courses" in data
-    for course in data["courses"]:
-        assert set(course.keys()) == {"id", "name", "distanceKm"}
-        assert isinstance(course["id"], str)
-        assert isinstance(course["name"], str)
-        assert isinstance(course["distanceKm"], (int, float))
+
+def test_integration_token_file_to_courses(tmp_path, monkeypatch):
+    import deps
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("THE-BLOB")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    deps.reset_session()
+
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = [
+        {"courseId": 111222333, "courseName": "Morning Trail", "distanceInMeters": 12345.0},
+    ]
+    captured = {}
+
+    def fake_session_from_tokens(blob):
+        captured["blob"] = blob
+        return GarminSession(fake_client)
+
+    monkeypatch.setattr("garmin.session_from_tokens", fake_session_from_tokens)
+
+    r = TestClient(main.app).get("/api/courses")
+    assert r.status_code == 200
+    assert r.json()["courses"][0]["name"] == "Morning Trail"
+    assert captured["blob"] == "THE-BLOB"  # the on-disk blob was loaded
+    deps.reset_session()
+
+
+def test_integration_course_points_ascii85(tmp_path, monkeypatch):
+    import deps
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("THE-BLOB")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    deps.reset_session()
+
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = {"geoPoints": [
+        {"latitude": 60.1699, "longitude": 24.9384},
+    ]}
+    monkeypatch.setattr("garmin.session_from_tokens", lambda blob: GarminSession(fake_client))
+
+    r = TestClient(main.app).get("/api/course/111222333")
+    assert r.status_code == 200
+    decoded = _decode_ascii85_points(r.text)
+    assert abs(decoded[0]["lat"] - 60.1699) < 1e-6
+    deps.reset_session()
+
+
+def test_integration_missing_token_file_returns_503(tmp_path, monkeypatch):
+    import deps
+    import main
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(tmp_path / "does-not-exist.blob"))
+    deps.reset_session()
+    assert TestClient(main.app).get("/api/courses").status_code == 503
+    deps.reset_session()
+
+
+def test_integration_web_setup_then_serve(tmp_path, monkeypatch):
+    """Full bootstrap: POST /setup/login writes the token file, and a
+    subsequent /api/courses loads it and serves courses. Only garth is faked."""
+    import deps
+    import main
+    from garmin import LoginResult
+
+    token_file = tmp_path / "tokens.blob"
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("SETUP_TOKEN", SETUP_TOKEN)
+    deps.reset_session()
+    deps._setup_service = None  # rebuild the service against the patched path
+
+    monkeypatch.setattr("garmin.begin_login",
+                        lambda email, password: LoginResult(token_blob=f"BLOB::{email}"))
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = [
+        {"courseId": 7, "courseName": "Web Loop", "distanceInMeters": 4200.0},
+    ]
+    monkeypatch.setattr("garmin.session_from_tokens", lambda blob: GarminSession(fake_client))
+
+    c = TestClient(main.app)
+
+    setup = c.post("/setup/login",
+                   data={"email": "rider@example.com", "password": "pw", "token": SETUP_TOKEN})
+    assert setup.status_code == 200
+    assert token_file.read_text() == "BLOB::rider@example.com"
+
+    courses = c.get("/api/courses")
+    assert courses.status_code == 200
+    assert courses.json()["courses"][0]["name"] == "Web Loop"
+
+    deps.reset_session()
+    deps._setup_service = None
+
+
+def test_integration_corrupt_blob_returns_503(tmp_path, monkeypatch):
+    """A present-but-invalid token blob is a defined 503, not a raw 500."""
+    import deps
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("CORRUPT-NOT-A-REAL-BLOB")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    deps.reset_session()
+
+    def boom(blob):
+        raise ValueError("not a valid garth token")
+
+    monkeypatch.setattr("garmin.session_from_tokens", boom)
+    assert TestClient(main.app).get("/api/courses").status_code == 503
+    assert deps._session is None  # failed load is not cached
+    deps.reset_session()
+
+
+def test_integration_garmin_error_resets_and_reloads_session(tmp_path, monkeypatch):
+    """502 on a Garmin error must evict the cached session so the next request
+    rebuilds from disk (token-expiry recovery)."""
+    import deps
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("BLOB")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    deps.reset_session()
+
+    bad = MagicMock()
+    bad.connectapi.side_effect = Exception("garmin down")
+    good = MagicMock()
+    good.connectapi.return_value = []
+    sessions = iter([GarminSession(bad), GarminSession(good)])
+    calls = {"n": 0}
+
+    def loader(blob):
+        calls["n"] += 1
+        return next(sessions)
+
+    monkeypatch.setattr("garmin.session_from_tokens", loader)
+    c = TestClient(main.app)
+
+    assert c.get("/api/courses").status_code == 502
+    assert calls["n"] == 1
+    # session was reset → second call rebuilds and succeeds
+    assert c.get("/api/courses").status_code == 200
+    assert calls["n"] == 2
+    deps.reset_session()
+
+
+def test_integration_resetup_evicts_cached_session(tmp_path, monkeypatch):
+    """Re-running /setup while a session is already cached must swap it for the
+    freshly-authenticated one."""
+    import deps
+    import main
+    from garmin import LoginResult
+
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("BLOB1")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("SETUP_TOKEN", SETUP_TOKEN)
+    deps.reset_session()
+    deps._setup_service = None
+
+    def loader(blob):
+        client = MagicMock()
+        client.connectapi.return_value = [
+            {"courseId": 1, "courseName": blob, "distanceInMeters": 0.0},
+        ]
+        return GarminSession(client)
+
+    monkeypatch.setattr("garmin.session_from_tokens", loader)
+    monkeypatch.setattr("garmin.begin_login",
+                        lambda email, password: LoginResult(token_blob="BLOB2"))
+    c = TestClient(main.app)
+
+    assert c.get("/api/courses").json()["courses"][0]["name"] == "BLOB1"
+    assert c.post("/setup/login",
+                  data={"email": "a@example.com", "password": "pw", "token": SETUP_TOKEN}).status_code == 200
+    assert token_file.read_text() == "BLOB2"
+    assert c.get("/api/courses").json()["courses"][0]["name"] == "BLOB2"
+
+    deps.reset_session()
+    deps._setup_service = None
