@@ -1,0 +1,22 @@
+# The build context is this directory, and the Dockerfile's `COPY . .` runs
+# *after* `uv sync`. Without these exclusions a local .venv would be copied
+# over the one built in the image — it is linked to a host interpreter path
+# that does not exist in python:3.14-slim, so uv discards it and re-resolves
+# every dependency at container start (a hard failure with no network).
+
+.venv/
+
+# Full-account Garmin credentials. .gitignore does not filter the Docker
+# build context, so these must be excluded again here or they get baked
+# into the image layers.
+.env
+*.blob
+.tokens-*
+*.db
+
+# Caches — noise in the image, and stale bytecode from a different Python.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
