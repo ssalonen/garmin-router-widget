@@ -14,7 +14,7 @@ from fastapi.security.api_key import APIKeyHeader
 import garmin
 from bootstrap import SetupService
 
-# Path to the garth token blob written by /setup, resolved once at import from
+# Path to the Garmin token blob written by /setup, resolved once at import from
 # GARMIN_TOKEN_FILE. (Unlike API_KEY/SETUP_TOKEN, which are read per-request,
 # this is fixed at startup; tests override get_session/get_setup_service or
 # monkeypatch this module attribute directly.)
@@ -44,7 +44,7 @@ def require_api_key(key: str | None = Security(_api_key_header)) -> None:
 def get_session() -> garmin.GarminSession:
     """Lazily build the single Garmin session from the on-disk token blob.
 
-    Overridden in tests. Cached so garth loads the tokens once per process.
+    Overridden in tests. Cached so the tokens are loaded once per process.
     """
     global _session
     with _lock:

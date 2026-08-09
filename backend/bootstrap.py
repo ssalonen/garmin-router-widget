@@ -1,6 +1,6 @@
 """Web bootstrap for the single Garmin account.
 
-Drives the garth login from a browser page: enter Garmin email/password,
+Drives the Garmin login from a browser page: enter Garmin email/password,
 complete phone MFA if prompted, and the resulting token blob is written to the
 token file the backend reads. Transport (HTML forms and routes) lives in
 routes_setup.py; this module is the logic and is unit-testable without HTTP.
@@ -22,8 +22,8 @@ class ExpiredLogin(Exception):
 class PendingLogins:
     """In-memory MFA continuations between the credential step and the code
     step, keyed by an opaque session id. In memory only and short-lived: a live
-    garth session is not meaningfully serialisable, and MFA completes in
-    minutes."""
+    Garmin client mid-login is not meaningfully serialisable, and MFA completes
+    in minutes."""
 
     def __init__(self, ttl_seconds: int = 600, now: Callable[[], float] = time.monotonic):
         self._ttl = ttl_seconds
@@ -50,7 +50,7 @@ class PendingLogins:
 
     def _sweep(self) -> None:
         # Caller holds _lock. Drop entries whose TTL has elapsed — otherwise an
-        # abandoned MFA (user never submits the code) would pin a live garth
+        # abandoned MFA (user never submits the code) would pin a live Garmin
         # client until process exit.
         now = self._now()
         expired = [sid for sid, (_, exp) in self._sessions.items() if now > exp]

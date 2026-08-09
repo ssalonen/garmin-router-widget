@@ -3,7 +3,7 @@
 ## Authentication
 
 Single-account setup: the backend talks to Garmin as **one** account (yours),
-using garth OAuth tokens minted once via the `/setup` web page. No Garmin
+using Garmin OAuth2 tokens minted once via the `/setup` web page. No Garmin
 password lives in the running service, and MFA is supported.
 
 ### Backend → Garmin Connect (one-time web bootstrap)
@@ -12,18 +12,19 @@ password lives in the running service, and MFA is supported.
 Browse to  <backend>/setup
    → enter setup token + Garmin email + password
    → [MFA] Garmin sends a code to your phone; enter it   ← phone-assisted
-   → garth mints real Garmin OAuth1→OAuth2 tokens
+   → garminconnect mints real Garmin OAuth2 tokens via SSO
    → token blob written to $GARMIN_TOKEN_FILE (0600, atomic)
    → "✅ Connected"
 ```
 
-garth (via the `garminconnect` library) performs the genuine Garmin SSO OAuth
-token exchange; `return_on_mfa` + `resume_login` surface the phone-delivered MFA
+The `garminconnect` library performs the genuine Garmin SSO OAuth2 token
+exchange; `return_on_mfa` + `resume_login` surface the phone-delivered MFA
 step (`/setup/login` → `/setup/mfa`, logic in `bootstrap.py`). The backend loads
-the saved blob at first request (`session_from_tokens`) and reuses it; the OAuth1
-token lasts ~1 year and the OAuth2 bearer auto-refreshes. When it finally
-expires, revisit `/setup`. The password is used only to mint tokens and is never
-stored.
+the saved blob at first request (`session_from_tokens`) and reuses it. The blob
+holds a bearer token plus a refresh token; the bearer is refreshed silently
+(the library re-mints it once the JWT `exp` is within 15 minutes), so day-to-day
+expiry is invisible. When the refresh token itself stops working, revisit
+`/setup`. The password is used only to mint tokens and is never stored.
 
 When tokens are expired/invalid the backend returns **503** on the course
 endpoints (auth failures are surfaced as `GarminAuthError`, kept distinct from a
@@ -32,7 +33,7 @@ cue to revisit `/setup`.
 
 Why not official Garmin OAuth? The Garmin Connect Developer Program's OAuth is
 restricted to approved business entities, not individuals — so for a personal
-tool the garth token flow is the only way to read your own course list.
+tool the SSO token flow is the only way to read your own course list.
 
 ### Widget → Backend
 Optional shared secret: set `API_KEY` on the backend and the matching `apiKey`
@@ -43,7 +44,7 @@ sideloaded `.prg`, so treat it as a coarse gate, not real auth.
 ### Configuration (backend env)
 | Var | Purpose |
 |---|---|
-| `GARMIN_TOKEN_FILE` | Path to the garth token blob written by `/setup`. In Docker this defaults to `/data/garmin_tokens.blob` (mount a volume); otherwise `garmin_tokens.blob` in CWD. |
+| `GARMIN_TOKEN_FILE` | Path to the Garmin token blob written by `/setup`. In Docker this defaults to `/data/garmin_tokens.blob` (mount a volume); otherwise `garmin_tokens.blob` in CWD. |
 | `API_KEY` | Optional shared secret required as `X-Api-Key`; unset disables the check |
 | `SETUP_TOKEN` | **Required to enable `/setup`.** Setup is default-closed; unset → `/setup` returns 403. |
 
@@ -73,8 +74,8 @@ These are real constraints, not asides:
   Docker image uses `/data`), else the tokens vanish on container recreation and
   you must re-run `/setup`.
 - **Blast radius.** The stored blob authenticates as the *full* Garmin account
-  (activities, settings, health data), not a course-read scope — garth can't
-  narrow it. Protecting the token file is the whole mitigation; it is gitignored
+  (activities, settings, health data), not a course-read scope — the SSO flow
+  can't narrow it. Protecting the token file is the whole mitigation; it is gitignored
   (`*.blob`).
 
 ### Multi-user, later
