@@ -31,7 +31,7 @@ jobs:
       sdk_version: ${{ steps.resolve.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install connect-iq-sdk-manager-cli
         run: curl -fsSL https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
@@ -63,7 +63,7 @@ jobs:
 
       - name: Restore SDK from cache
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.Garmin/ConnectIQ
           key: connectiq-sdk-${{ steps.resolve.outputs.version }}
@@ -76,13 +76,13 @@ jobs:
 
       - name: Save SDK to cache
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.Garmin/ConnectIQ
           key: connectiq-sdk-${{ steps.resolve.outputs.version }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -124,7 +124,7 @@ jobs:
 
       - name: Build and push Docker image
         if: steps.image-check.outputs.exists != 'true' || inputs.force_rebuild
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .github/docker
           file: .github/docker/connectiq-builder.Dockerfile
