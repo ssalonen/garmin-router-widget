@@ -1,0 +1,67 @@
+# Automated dependency updates.
+#
+# Added because everything in this repo had drifted badly with nothing watching
+# it: the backend sat on Python 3.11 with dependency floors from 2023, and every
+# GitHub Action was one to three majors behind.
+#
+# Minor and patch updates are grouped into a single PR per ecosystem to keep the
+# noise down. Major updates deliberately arrive as their own PR — those are the
+# ones that need a human to read the changelog before merging.
+version: 2
+
+updates:
+  # Backend Python deps — reads backend/pyproject.toml and backend/uv.lock.
+  # "uv" is a first-class ecosystem; using "pip" here would not maintain the
+  # lockfile.
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      python-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Actions used by ci.yml and sdk-update.yml. Always directory "/" — the path
+  # is not .github/workflows.
+  #
+  # Note astral-sh/setup-uv is pinned to an exact release (v9.0.0) because
+  # upstream stopped publishing moving major tags at v8.0.0. Dependabot updates
+  # exact pins like that fine; it is the floating major tags it cannot help with.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Base image in backend/Dockerfile. Monthly — base images move slowly and CI
+  # does not build this image, so these PRs are reviewed rather than rubber
+  # stamped.
+  #
+  # The Connect IQ builder image is NOT covered: Dependabot's docker ecosystem
+  # only detects files literally named "Dockerfile" or "Containerfile", and that
+  # one is .github/docker/connectiq-builder.Dockerfile. An entry pointing at
+  # that directory would silently do nothing, so there deliberately isn't one —
+  # its base image (eclipse-temurin) has to be bumped by hand.
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore(deps)"
