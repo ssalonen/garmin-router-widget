@@ -1,14 +1,15 @@
 """Garmin Connect access, split into two concerns:
 
   - Auth seam (begin_login / resume_login / session_from_tokens): the *only*
-    place that drives garth's SSO OAuth flow. Returns opaque token blobs so the
-    rest of the app never touches credentials.
+    place that drives garminconnect's SSO login flow. Returns opaque token
+    blobs so the rest of the app never touches credentials.
   - GarminSession: course reads against an already-authenticated client.
   - Pure encoders: the wire format for the widget.
 
-garth performs the real Garmin OAuth1+OAuth2 token exchange under the hood;
-`return_on_mfa` surfaces the phone-delivered MFA step so the web login flow can
-complete it interactively.
+`garminconnect` performs the real Garmin SSO OAuth2 token exchange under the
+hood, trying a chain of login strategies (mobile/iOS, SSO embed widget, portal
+web) until one succeeds. `return_on_mfa` surfaces the phone-delivered MFA step
+so the web login flow can complete it interactively.
 """
 import base64
 import struct
@@ -31,8 +32,8 @@ _MFA_REQUIRED = "needs_mfa"
 class LoginResult:
     """Outcome of begin_login: either a token blob, or an MFA continuation.
 
-    mfa_context is opaque to callers — it carries the live garth client plus the
-    client_state resume_login needs, and must be held server-side (in memory)
+    mfa_context is opaque to callers — it carries the live Garmin client plus
+    the client_state resume_login needs, and must be held server-side (in memory)
     until the user supplies the code from their phone.
     """
 
@@ -61,7 +62,7 @@ def resume_login(mfa_context: object, mfa_code: str) -> str:
 
 def session_from_tokens(token_blob: str) -> "GarminSession":
     client = Garmin()
-    client.login(token_blob)  # blob > 512 chars → garth loads() the session
+    client.login(token_blob)  # blob > 512 chars → loads() the session inline
     return GarminSession(client)
 
 
@@ -90,7 +91,7 @@ class GarminSession:
         try:
             return self._client.connectapi(path, **kwargs)
         except GarminConnectAuthenticationError as e:
-            # Tokens expired/revoked (garth's silent OAuth2 refresh failed) →
+            # Tokens expired/revoked (the silent OAuth2 refresh failed) →
             # surface as a re-auth signal, not a generic upstream error.
             raise GarminAuthError(str(e)) from e
 

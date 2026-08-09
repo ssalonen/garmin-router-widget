@@ -1,6 +1,6 @@
 """Tests for the web bootstrap service (setup.py).
 
-The garth seam is faked; these cover the two-step login logic (credentials,
+The Garmin seam is faked; these cover the two-step login logic (credentials,
 then phone MFA) and that a completed login writes the single token file.
 """
 import pytest

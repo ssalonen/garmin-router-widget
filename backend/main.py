@@ -1,6 +1,6 @@
 """Garmin Route Loader backend — application assembly.
 
-Single-account course proxy: authenticates to Garmin with garth tokens minted
+Single-account course proxy: authenticates to Garmin with OAuth tokens minted
 once via /setup (no password in env, MFA supported), and serves the widget's
 course list/points. Wiring lives in deps.py; routes are split across
 routes_setup / routes_courses / routes_health.

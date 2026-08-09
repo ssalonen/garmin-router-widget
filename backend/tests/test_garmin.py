@@ -1,4 +1,4 @@
-"""Tests for the garth auth seam and GarminSession (garmin.py).
+"""Tests for the Garmin auth seam and GarminSession (garmin.py).
 
 garminconnect.Garmin is mocked everywhere here — no network, no credentials.
 This pins the contract garmin.py relies on:
@@ -165,9 +165,9 @@ def test_get_course_points_empty_or_missing_geopoints():
     assert garmin.GarminSession(client).get_course_points("1") == []
 
 
-# ── garth contract pin: guard against a garminconnect upgrade breaking the seam
+# ── contract pin: guard against a garminconnect upgrade breaking the seam
 
-def test_garth_seam_contract_matches_real_garminconnect():
+def test_auth_seam_contract_matches_real_garminconnect():
     """The faked seam is only trustworthy if the real library still exposes what
     begin_login/resume_login/session_from_tokens depend on."""
     import inspect

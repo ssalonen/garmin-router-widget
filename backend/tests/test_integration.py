@@ -1,5 +1,5 @@
-"""End-to-end through the real get_session path: token file on disk → garth
-session → course endpoint. Only the garth boundary (session_from_tokens) is
+"""End-to-end through the real get_session path: token file on disk → Garmin
+session → course endpoint. Only the Garmin boundary (session_from_tokens) is
 faked, so the file read, session caching, and response encoding are all real.
 
 State (token file, cached session, setup-service) lives in deps; these tests
@@ -86,7 +86,7 @@ def test_integration_missing_token_file_returns_503(tmp_path, monkeypatch):
 
 def test_integration_web_setup_then_serve(tmp_path, monkeypatch):
     """Full bootstrap: POST /setup/login writes the token file, and a
-    subsequent /api/courses loads it and serves courses. Only garth is faked."""
+    subsequent /api/courses loads it and serves courses. Only Garmin is faked."""
     import deps
     import main
     from garmin import LoginResult
@@ -130,7 +130,7 @@ def test_integration_corrupt_blob_returns_503(tmp_path, monkeypatch):
     deps.reset_session()
 
     def boom(blob):
-        raise ValueError("not a valid garth token")
+        raise ValueError("not a valid Garmin token")
 
     monkeypatch.setattr("garmin.session_from_tokens", boom)
     assert TestClient(main.app).get("/api/courses").status_code == 503

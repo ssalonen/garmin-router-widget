@@ -1,5 +1,5 @@
 """HTTP-level tests for the web bootstrap pages (/setup, /setup/login,
-/setup/mfa). garth is faked via conftest.FakeAuth.
+/setup/mfa). The Garmin client is faked via conftest.FakeAuth.
 
 Setup is default-closed: SETUP_TOKEN must be configured. The token is submitted
 as a POST form field (never a URL query param). The `enabled` autouse fixture
