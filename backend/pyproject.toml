@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.1",
-    "garminconnect>=0.3.9",
+    "garminconnect>=0.3.10",
     "python-multipart>=0.0.32",
 ]
 
