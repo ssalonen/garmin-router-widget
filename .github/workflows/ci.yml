@@ -18,7 +18,7 @@ jobs:
 
       # Pinned to an exact release: setup-uv stopped publishing moving major
       # tags (@v9) as of v8.0.0, so this has to be bumped by hand.
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
 
       - name: Run tests
         run: uv run --group dev pytest -v --tb=short
