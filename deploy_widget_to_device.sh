@@ -38,11 +38,12 @@ DUMMY_PATTERNS=(
 # under `pipefail` can intermittently report failure even on a match.
 prg_strings="$(strings "$PRG")"
 
+PROD_PROPS="$SCRIPT_DIR/widget/resources/settings/properties_PROD.xml"
+
 fail=0
 for pattern in "${DUMMY_PATTERNS[@]}"; do
     if grep -qF "$pattern" <<< "$prg_strings"; then
         echo "error: $PRG still contains placeholder value '$pattern'" >&2
-        echo "       check widget/resources/settings/properties_PROD.xml exists and was picked up at build time" >&2
         fail=1
     fi
 done
@@ -53,6 +54,26 @@ if ! grep -qE "^https://" <<< "$prg_strings"; then
 fi
 
 if [ "$fail" -ne 0 ]; then
+    echo "" >&2
+    if [ -f "$PROD_PROPS" ]; then
+        echo "How to fix:" >&2
+        echo "  1. Edit $PROD_PROPS and set real apiKey/backendUrl values" >&2
+        echo "     (it exists but its values weren't picked up by this build — make sure it wasn't left empty/reverted)." >&2
+        echo "  2. Rebuild, wiping cached resources so the edit actually takes effect:" >&2
+        echo "       rm -rf widget/gen widget/internal-mir" >&2
+        echo "       (cd widget && monkeyc -f monkey.jungle -d edge530 -o bin/widget.prg -y developer_key -l 3)" >&2
+        echo "  3. Re-run this script." >&2
+    else
+        echo "How to fix:" >&2
+        echo "  1. Create $PROD_PROPS (gitignored, never committed) with your real values:" >&2
+        echo "       <properties>" >&2
+        echo "           <property id=\"backendUrl\" type=\"string\">https://your-real-backend</property>" >&2
+        echo "           <property id=\"apiKey\" type=\"string\">your-real-api-key</property>" >&2
+        echo "       </properties>" >&2
+        echo "  2. Rebuild:" >&2
+        echo "       (cd widget && monkeyc -f monkey.jungle -d edge530 -o bin/widget.prg -y developer_key -l 3)" >&2
+        echo "  3. Re-run this script." >&2
+    fi
     exit 1
 fi
 
