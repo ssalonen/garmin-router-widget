@@ -9,11 +9,12 @@ class RouteLoaderApp extends Application.AppBase {
     }
 
     function getInitialView() {
-        var backendUrlProp = Application.Properties.getValue("backendUrl");
-        var backendUrl = ((backendUrlProp instanceof Lang.String) &&
-                         !(backendUrlProp as Lang.String).equals(""))
-            ? backendUrlProp as Lang.String
-            : "https://your-server.example.com";
+        // var backendUrlProp = Application.Properties.getValue("backendUrl");
+        // var backendUrl = ((backendUrlProp instanceof Lang.String) &&
+        //                  !(backendUrlProp as Lang.String).equals(""))
+        //     ? backendUrlProp as Lang.String
+        //     : "https://garmin.mailhub.fi";
+        var backendUrl = "https://garmin.mailhub.fi";
 
         var debugMode = Application.Properties.getValue("debugMode");
 

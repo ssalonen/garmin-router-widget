@@ -244,11 +244,13 @@ function testDecodeAscii85_roundtrip_sydney(logger as Test.Logger) as Lang.Boole
 
 (:test)
 function testHttpErrorString_knownCodes(logger as Test.Logger) as Lang.Boolean {
-    Test.assertEqual(httpErrorString(-300), "BLE host timeout");
-    Test.assertEqual(httpErrorString(-301), "BLE server timeout");
-    Test.assertEqual(httpErrorString(-402), "Network error");
-    Test.assertEqual(httpErrorString(404),  "Course not found");
-    Test.assertEqual(httpErrorString(502),  "Backend error");
+    Test.assertEqual(httpErrorString(0),     "No response (phone?)");
+    Test.assertEqual(httpErrorString(-104),  "Phone not connected");
+    Test.assertEqual(httpErrorString(-300),  "Request timed out");
+    Test.assertEqual(httpErrorString(-403),  "Out of memory");
+    Test.assertEqual(httpErrorString(-1001), "HTTPS required");
+    Test.assertEqual(httpErrorString(404),   "Course not found");
+    Test.assertEqual(httpErrorString(502),   "Backend error");
     return true;
 }
 
