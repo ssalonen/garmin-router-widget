@@ -26,11 +26,11 @@ class Logger {
     // Returns recent log lines newest-first, up to `max` items.
     function getRecent(max as Lang.Number) as Lang.Array<Lang.String> {
         var n = (_ringSize < max) ? _ringSize : max;
-        var out = new [n];
+        var out = new [n] as Lang.Array<Lang.String>;
         for (var i = 0; i < n; i++) {
             var idx = _ringHead - 1 - i;
             while (idx < 0) { idx += LOG_RING_SIZE; }
-            out[i] = _ring[idx];
+            out[i] = _ring[idx] as Lang.String;
         }
         return out;
     }

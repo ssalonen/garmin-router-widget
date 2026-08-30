@@ -305,22 +305,22 @@ class CourseListView extends WatchUi.View {
 
     // Word-wrap to lines of up to `maxChars`, preferring to break at space or
     // comma. Returns at least one element.
-    function _wrap(text as Lang.String, maxChars as Lang.Number) as Lang.Array {
-        var out = [] as Lang.Array;
+    function _wrap(text as Lang.String, maxChars as Lang.Number) as Lang.Array<Lang.String> {
+        var out = [] as Lang.Array<Lang.String>;
         var s = text;
         while (s.length() > maxChars) {
             var cut = -1;
             // Look for a good break point in the window [maxChars/2 .. maxChars]
             for (var i = maxChars; i > maxChars / 2; i--) {
-                var ch = s.substring(i - 1, i);
+                var ch = s.substring(i - 1, i) as Lang.String;
                 if (ch.equals(" ") || ch.equals(",")) { cut = i; break; }
             }
             if (cut < 0) { cut = maxChars; }
-            out.add(s.substring(0, cut));
-            s = s.substring(cut, s.length());
+            out.add(s.substring(0, cut) as Lang.String);
+            s = s.substring(cut, s.length()) as Lang.String;
             // Trim a single leading space, if any
-            if (s.length() > 0 && s.substring(0, 1).equals(" ")) {
-                s = s.substring(1, s.length());
+            if (s.length() > 0 && (s.substring(0, 1) as Lang.String).equals(" ")) {
+                s = s.substring(1, s.length()) as Lang.String;
             }
         }
         out.add(s);
