@@ -1,3 +1,5 @@
+/widget/resources/settings/properties_PROD.xml
+
 # Python
 __pycache__/
 *.pyc
