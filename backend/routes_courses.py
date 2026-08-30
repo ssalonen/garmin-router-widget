@@ -15,12 +15,13 @@ router = APIRouter(prefix="/api", tags=["courses"])
 
 @router.get("/courses")
 def list_courses(
-    limit: int = Query(default=10, le=50),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
     _: None = Security(require_api_key),
     session: garmin.GarminSession = Depends(get_session),
 ):
     try:
-        courses = session.get_courses(limit=limit)
+        courses = session.get_courses(limit=limit, offset=offset)
     except garmin.GarminAuthError:
         reset_session()
         raise HTTPException(status_code=503, detail=REAUTH_DETAIL)
