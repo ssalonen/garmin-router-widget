@@ -13,7 +13,7 @@ class RouteLoaderApp extends Application.AppBase {
         var backendUrl = ((backendUrlProp instanceof Lang.String) &&
                          !(backendUrlProp as Lang.String).equals(""))
             ? backendUrlProp as Lang.String
-            : "https://your-server.example.com";
+            : "https://garmin.mailhub.fi";
 
         var debugMode = Application.Properties.getValue("debugMode");
 

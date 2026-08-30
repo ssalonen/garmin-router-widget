@@ -54,6 +54,28 @@ def test_integration_token_file_to_courses(tmp_path, monkeypatch):
     deps.reset_session()
 
 
+def test_integration_pagination_offset_forwarded_to_garmin(tmp_path, monkeypatch):
+    """limit/offset query params reach the real Garmin connectapi call as
+    limit/start, through the full get_session → GarminSession.get_courses path."""
+    import deps
+    import main
+    token_file = tmp_path / "tokens.blob"
+    token_file.write_text("THE-BLOB")
+    monkeypatch.setattr(deps, "TOKEN_FILE", str(token_file))
+    deps.reset_session()
+
+    fake_client = MagicMock()
+    fake_client.connectapi.return_value = []
+    monkeypatch.setattr("garmin.session_from_tokens", lambda blob: GarminSession(fake_client))
+
+    r = TestClient(main.app).get("/api/courses?limit=5&offset=10")
+    assert r.status_code == 200
+    params = fake_client.connectapi.call_args.kwargs["params"]
+    assert params["limit"] == 5
+    assert params["start"] == 10
+    deps.reset_session()
+
+
 def test_integration_course_points_ascii85(tmp_path, monkeypatch):
     import deps
     import main

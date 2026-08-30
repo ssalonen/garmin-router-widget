@@ -44,7 +44,12 @@ class CourseListView extends WatchUi.View {
 
     function onShow() as Void {
         if ($ has :_IS_TEST_BUILD) { return; }
-        _loadCourseList();
+        // Only fetch on first show or after an explicit refresh/error.
+        // Re-entering the widget from the carousel must not discard a loaded
+        // list and reset the selection — that would interrupt mid-session use.
+        if (state == STATE_LOADING_LIST) {
+            _loadCourseList();
+        }
     }
 
     // ---- public actions (called by delegate) ----------------------------
@@ -56,6 +61,7 @@ class CourseListView extends WatchUi.View {
     }
 
     function scrollDown() as Void {
+        _logger.info("SCROLL_DOWN", null);
         if (state != STATE_LIST_READY) { return; }
         if (_courses == null) { return; }
         if (_selectedIdx < (_courses as Lang.Array).size() - 1) {
@@ -263,18 +269,62 @@ class CourseListView extends WatchUi.View {
     }
 
     function _drawError(dc as Graphics.Dc) as Void {
+        var cx = dc.getWidth() / 2;
         dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(dc.getWidth() / 2, 65, Graphics.FONT_SMALL,
-            "Error", Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, 30, Graphics.FONT_SMALL, "Error", Graphics.TEXT_JUSTIFY_CENTER);
+
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         var msg = (_errorMsg != null) ? _errorMsg : "Unknown error";
-        dc.drawText(dc.getWidth() / 2, 92, Graphics.FONT_TINY, msg,
+        dc.drawText(cx, 52, Graphics.FONT_TINY, msg, Graphics.TEXT_JUSTIFY_CENTER);
+
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, 70, Graphics.FONT_TINY,
+            "HTTP " + _errorCode + "   " + _lastDurationMs + "ms",
             Graphics.TEXT_JUSTIFY_CENTER);
-        if (_errorCode != 0) {
-            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(dc.getWidth() / 2, 112, Graphics.FONT_TINY,
-                "code " + _errorCode, Graphics.TEXT_JUSTIFY_CENTER);
+
+        // URL (truncated if needed)
+        var url = _loader.getBaseUrl();
+        if (url.length() > 32) { url = ".." + url.substring(url.length() - 30, url.length()); }
+        dc.drawText(cx, 86, Graphics.FONT_XTINY, url, Graphics.TEXT_JUSTIFY_CENTER);
+
+        // Recent log tail (wrapped)
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+        var recent = _logger.getRecent(6);
+        var y = 105;
+        for (var i = 0; i < recent.size(); i++) {
+            var wrapped = _wrap(recent[i], 38);
+            for (var j = 0; j < wrapped.size(); j++) {
+                dc.drawText(4, y, Graphics.FONT_XTINY,
+                    (j == 0 ? "" : "  ") + wrapped[j],
+                    Graphics.TEXT_JUSTIFY_LEFT);
+                y += 11;
+                if (y > FOOTER_Y - 12) { return; }
+            }
         }
+    }
+
+    // Word-wrap to lines of up to `maxChars`, preferring to break at space or
+    // comma. Returns at least one element.
+    function _wrap(text as Lang.String, maxChars as Lang.Number) as Lang.Array<Lang.String> {
+        var out = [] as Lang.Array<Lang.String>;
+        var s = text;
+        while (s.length() > maxChars) {
+            var cut = -1;
+            // Look for a good break point in the window [maxChars/2 .. maxChars]
+            for (var i = maxChars; i > maxChars / 2; i--) {
+                var ch = s.substring(i - 1, i) as Lang.String;
+                if (ch.equals(" ") || ch.equals(",")) { cut = i; break; }
+            }
+            if (cut < 0) { cut = maxChars; }
+            out.add(s.substring(0, cut) as Lang.String);
+            s = s.substring(cut, s.length()) as Lang.String;
+            // Trim a single leading space, if any
+            if (s.length() > 0 && (s.substring(0, 1) as Lang.String).equals(" ")) {
+                s = s.substring(1, s.length()) as Lang.String;
+            }
+        }
+        out.add(s);
+        return out;
     }
 
     function _drawFooter(dc as Graphics.Dc, hint as Lang.String) as Void {
@@ -285,7 +335,7 @@ class CourseListView extends WatchUi.View {
 
     function _drawDebug(dc as Graphics.Dc) as Void {
         dc.setColor(Graphics.COLOR_YELLOW, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(4, 2, Graphics.FONT_TINY, "[DEBUG]  any key: exit",
+        dc.drawText(4, 1, Graphics.FONT_XTINY, "[DEBUG] any key: exit",
             Graphics.TEXT_JUSTIFY_LEFT);
 
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
@@ -296,40 +346,41 @@ class CourseListView extends WatchUi.View {
         var stateLabel = (state >= 0 && state < stateLabels.size())
             ? stateLabels[state].toString()
             : "?";
-        dc.drawText(4, 18, Graphics.FONT_TINY, "State: " + stateLabel,
+        var courseCount = (_courses != null) ? (_courses as Lang.Array).size() : 0;
+        dc.drawText(4, 13, Graphics.FONT_XTINY,
+            "S:" + stateLabel + "  C:" + courseCount + "  i:" + _selectedIdx,
             Graphics.TEXT_JUSTIFY_LEFT);
 
-        var last = _logger.getLastEntry();
-        var lvl = last.get("level");
-        var msg = last.get("msg");
-        if (lvl != null) {
-            if (msg != null) {
-                var msgStr = msg.toString();
-                if (msgStr.length() > 24) { msgStr = msgStr.substring(0, 24) + ".."; }
-                dc.drawText(4, 34, Graphics.FONT_TINY, lvl.toString() + ": " + msgStr,
-                    Graphics.TEXT_JUSTIFY_LEFT);
-            }
-        }
-        var httpStatus = last.get("http_status");
-        var ms = last.get("ms");
-        if (httpStatus != null) {
-            var msStr = (ms != null) ? ms.toString() : _lastDurationMs.toString();
-            dc.drawText(4, 50, Graphics.FONT_TINY,
-                "HTTP " + httpStatus.toString() + "  " + msStr + "ms",
-                Graphics.TEXT_JUSTIFY_LEFT);
-        }
+        var url = _loader.getBaseUrl();
+        if (url.length() > 38) { url = ".." + url.substring(url.length() - 36, url.length()); }
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(4, 25, Graphics.FONT_XTINY, url, Graphics.TEXT_JUSTIFY_LEFT);
 
+        var y = 37;
         if (_errorMsg != null) {
             dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(4, 66, Graphics.FONT_TINY, "Err: " + _errorMsg,
-                Graphics.TEXT_JUSTIFY_LEFT);
+            var errLine = "ERR " + _errorCode + ": " + (_errorMsg as Lang.String);
+            var wErr = _wrap(errLine, 40);
+            for (var k = 0; k < wErr.size(); k++) {
+                dc.drawText(4, y, Graphics.FONT_XTINY,
+                    (k == 0 ? "" : "  ") + wErr[k], Graphics.TEXT_JUSTIFY_LEFT);
+                y += 11;
+            }
+            y += 2;
         }
 
-        if (_courses != null) {
-            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(4, 82, Graphics.FONT_TINY,
-                "Courses: " + (_courses as Lang.Array).size() + "  sel: " + _selectedIdx,
-                Graphics.TEXT_JUSTIFY_LEFT);
+        // Log tail (newest first), wrapped
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+        var recent = _logger.getRecent(10);
+        for (var i = 0; i < recent.size(); i++) {
+            var wrapped = _wrap(recent[i], 40);
+            for (var j = 0; j < wrapped.size(); j++) {
+                dc.drawText(4, y, Graphics.FONT_XTINY,
+                    (j == 0 ? "" : "  ") + wrapped[j],
+                    Graphics.TEXT_JUSTIFY_LEFT);
+                y += 11;
+                if (y > FOOTER_Y - 12) { return; }
+            }
         }
     }
 }
@@ -345,34 +396,64 @@ class CourseListDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onKey(keyEvent as WatchUi.KeyEvent) as Lang.Boolean {
-        var key = keyEvent.getKey();
+        try {
+            var key = keyEvent.getKey();
+            _view._logger.info("KEY:" + key, null);
 
-        // Debug overlay eats all key presses
-        if (_view._debugMode) {
-            _view.toggleDebug();
-            return true;
-        }
+            // Debug overlay eats all key presses
+            if (_view._debugMode) {
+                _view.toggleDebug();
+                return true;
+            }
 
-        if (key == WatchUi.KEY_UP)   { _view.scrollUp();   return true; }
-        if (key == WatchUi.KEY_DOWN) { _view.scrollDown();  return true; }
+            if (key == WatchUi.KEY_UP)   { _view.scrollUp();   return true; }
+            if (key == WatchUi.KEY_DOWN) { _view.scrollDown();  return true; }
 
-        if (key == WatchUi.KEY_ENTER || key == WatchUi.KEY_START) {
-            var s = _view.state;
-            if (s == STATE_LIST_READY)  { _view.selectCourse(); return true; }
-            if (s == STATE_ERROR)       { _view.refresh();      return true; }
+            if (key == WatchUi.KEY_START || key == WatchUi.KEY_ENTER) {
+                var s = _view.state;
+                if (s == STATE_LIST_READY)  { _view.selectCourse(); return true; }
+                if (s == STATE_ERROR)       { _view.refresh();      return true; }
+                return false;
+            }
+
+            if (key == WatchUi.KEY_LAP) {
+                if (_view.state == STATE_LIST_READY) {
+                    _view.refresh();
+                } else {
+                    _view.toggleDebug();
+                }
+                return true;
+            }
+
+            return false;
+        } catch (ex instanceof Lang.Exception) {
+            System.println("CRASH onKey: " + ex.getErrorMessage());
             return false;
         }
+    }
 
-        if (key == WatchUi.KEY_LAP) {
-            if (_view.state == STATE_LIST_READY) {
-                _view.refresh();
-            } else {
-                _view.toggleDebug();
-            }
-            return true;
+    // Edge devices route their page buttons through onNextPage/onPreviousPage
+    // rather than onKey(KEY_DOWN/KEY_UP), so both paths must be handled.
+    function onNextPage() as Lang.Boolean {
+        try {
+            _view._logger.info("NEXTPAGE", null);
+            if (_view._debugMode) { _view.toggleDebug(); return true; }
+            _view.scrollDown();
+        } catch (ex instanceof Lang.Exception) {
+            System.println("CRASH onNextPage: " + ex.getErrorMessage());
         }
+        return true;
+    }
 
-        return false;
+    function onPreviousPage() as Lang.Boolean {
+        try {
+            _view._logger.info("PREVPAGE", null);
+            if (_view._debugMode) { _view.toggleDebug(); return true; }
+            _view.scrollUp();
+        } catch (ex instanceof Lang.Exception) {
+            System.println("CRASH onPreviousPage: " + ex.getErrorMessage());
+        }
+        return true;
     }
 
     function onBack() as Lang.Boolean {
@@ -380,7 +461,12 @@ class CourseListDelegate extends WatchUi.BehaviorDelegate {
             _view.toggleDebug();
             return true;
         }
-        WatchUi.popView(WatchUi.SLIDE_RIGHT);
+        _view._logger.info("BACK", null);
+        try {
+            WatchUi.popView(WatchUi.SLIDE_RIGHT);
+        } catch (ex instanceof Lang.Exception) {
+            _view._logger.warn("popView failed", {"err" => ex.getErrorMessage()});
+        }
         return true;
     }
 }

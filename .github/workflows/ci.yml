@@ -117,62 +117,105 @@ jobs:
 
       - name: Run E2E tests with mock API server
         # Mounts widget/ at /app inside the container.
-        # e2e.sh starts mock_server.py (Python 3 stdlib only), patches
-        # backendUrl to http://127.0.0.1:8765 in a temp copy of the source,
-        # compiles the widget, then exercises three simulator scenarios:
-        #   A) normal — courses list + scroll + navigation to route
-        #   B) error  — HTTP 500 → error state
-        #   C) empty  — empty JSON list → "No courses found" error state
-        # Screenshots are written to widget/test-results/e2e/ via the volume mount.
+        # e2e.sh starts mock_server.py, patches backendUrl to http://127.0.0.1:8765
+        # in a temp copy of the source, compiles the widget, then runs five scenarios:
+        #   A) normal — course list + navigate first course
+        #   B) normal — scroll to second course + navigate
+        #   C) error  — HTTP 500 → error state
+        #   D) empty  — empty JSON list → "No courses found"
+        #   E) many   — 8 courses (2 pages of 5) → scroll to page 2
+        # Screenshots and run.log are written to widget/test-results/e2e/.
         run: |
+          mkdir -p widget/test-results/e2e
           docker run --rm \
             -v "$PWD/widget:/app" \
             --workdir /app \
             -e CONNECTIQ_HOME=/opt/connectiq-sdk \
             --entrypoint /bin/bash \
             ${{ env.CIQ_IMAGE }} \
-            /app/test/e2e.sh edge530 ""
+            /app/test/e2e.sh edge530 "" 2>&1 | tee widget/test-results/e2e/run.log
+          exit ${PIPESTATUS[0]}
 
-      - name: Upload screenshots
+      - name: Generate HTML report
+        if: always()
+        run: |
+          python3 widget/test/gen_report.py \
+            --screenshots widget/test-results/e2e \
+            --log        widget/test-results/e2e/run.log \
+            --output     widget/test-results/e2e/report.html \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload e2e report
         id: upload
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-screenshots-${{ github.run_number }}
+          name: e2e-report-${{ github.run_number }}
           path: widget/test-results/e2e/
           if-no-files-found: warn
 
-      - name: Comment screenshot link on PR
+      - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v9
         with:
           script: |
-            const marker = '<!-- e2e-screenshots -->';
+            const marker = '<!-- e2e-report -->';
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const artifactUrl = `${runUrl}#artifacts`;
+
+            // Find the job URL for this specific job so we can link directly
+            // to its step summary (where the base64 screenshots are rendered).
+            let jobUrl = runUrl;
+            try {
+              const { data } = await github.rest.actions.listJobsForWorkflowRun({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                run_id: context.runId,
+              });
+              const job = data.jobs.find(j => j.name === 'E2E screenshot tests');
+              if (job) jobUrl = job.html_url;
+            } catch (_) {}
+
+            // Parse PASS/FAIL lines from the log written by gen_report stdout
+            // (also available in the step summary we just wrote).
+            const fs   = require('fs');
+            const log  = fs.existsSync('widget/test-results/e2e/run.log')
+                         ? fs.readFileSync('widget/test-results/e2e/run.log', 'utf8')
+                         : '';
+            const pass = (log.match(/\[assert\] PASS '[^']+'/g) || [])
+                           .map(l => l.replace("[assert] PASS '", '').replace("'", ''));
+            const fail = (log.match(/\[assert\] FAIL '[^']+'/g) || [])
+                           .map(l => l.replace("[assert] FAIL '", '').replace("'", ''));
+            const icon = fail.length === 0 ? '✅' : '❌';
+
+            let table = '| | Assertion |\n|-|-----------|\n';
+            for (const l of pass) table += `| ✅ | ${l} |\n`;
+            for (const l of fail) table += `| ❌ | ${l} |\n`;
+
             const body = [
               marker,
-              `📸 **E2E screenshots** for run [#${context.runNumber}](${artifactUrl})`,
-              `Artifact: \`e2e-screenshots-${context.runNumber}\``,
+              `## ${icon} E2E screenshot tests — run [#${context.runNumber}](${jobUrl})`,
+              '',
+              table,
+              `[📸 View full report with screenshots →](${jobUrl})`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
-              repo: context.repo.repo,
+              repo:  context.repo.repo,
               issue_number: context.issue.number,
             });
             const existing = comments.find(c => c.body.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
                 comment_id: existing.id,
                 body,
               });
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
                 issue_number: context.issue.number,
                 body,
               });

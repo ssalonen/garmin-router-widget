@@ -95,10 +95,10 @@ class GarminSession:
             # surface as a re-auth signal, not a generic upstream error.
             raise GarminAuthError(str(e)) from e
 
-    def get_courses(self, limit: int = 10) -> list[dict]:
+    def get_courses(self, limit: int = 10, offset: int = 0) -> list[dict]:
         data = self._connectapi(
             _COURSE_LIST_PATH,
-            params={"start": 0, "limit": limit, "courseType": "ALL"},
+            params={"start": offset, "limit": limit, "courseType": "ALL"},
         )
         courses = []
         for c in data:

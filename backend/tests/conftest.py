@@ -16,7 +16,7 @@ class FakeSession:
         self.points: list[dict] = []
         self.raise_exc: Exception | None = None
 
-    def get_courses(self, limit=10):
+    def get_courses(self, limit=10, offset=0):
         if self.raise_exc:
             raise self.raise_exc
         return self.courses
