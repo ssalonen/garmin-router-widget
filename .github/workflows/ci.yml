@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lets a feature branch be verified before it has a PR — the e2e job needs a
+  # real simulator, so there is no local equivalent to run instead.
+  workflow_dispatch:
 
 env:
   CIQ_IMAGE: ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:9.1.0
