@@ -496,10 +496,21 @@ start_mock() {
         kill "$MOCK_PID" 2>/dev/null || true
         sleep 1
     fi
-    python3 "$APP_DIR/test/mock_server.py" --port "$PORT" --mode "$new_mode" --delay "$new_delay" &
+    # The mock's stdout is the only *timely* record of what the widget asked
+    # for and what it got: mock_server.py prints with flush=True, whereas the
+    # simulator log lags by a buffer's worth of output and cannot be relied on
+    # mid-run. Request-level assertions read this file; mock.log holds the
+    # current scenario only, mock-all.log accumulates the run.
+    if [ -f "${RESULTS}/mock.log" ]; then
+        cat "${RESULTS}/mock.log" >> "${RESULTS}/mock-all.log"
+    fi
+    : > "${RESULTS}/mock.log"
+    printf '[mock] ══ %s (delay %ss) ══\n' "$new_mode" "$new_delay" >> "${RESULTS}/mock.log"
+    python3 "$APP_DIR/test/mock_server.py" --port "$PORT" --mode "$new_mode" --delay "$new_delay" \
+        >> "${RESULTS}/mock.log" 2>&1 &
     MOCK_PID=$!
     sleep 1
-    echo "[e2e] Mock server PID=$MOCK_PID  mode=$new_mode  delay=${new_delay}s"
+    echo "[e2e] Mock server PID=$MOCK_PID  mode=$new_mode  delay=${new_delay}s  → mock.log"
 }
 
 load_app() {
@@ -658,12 +669,13 @@ assert_screenshots_differ() {
     fi
 }
 
-# ── Log assertions ───────────────────────────────────────────────────────────
+# ── Scenario log helpers (diagnostic) ────────────────────────────────────────
 #
-# The FIT path produces no distinctive pixels — the course is handed to the OS,
-# not drawn — so these assert on System.println() output instead. Each
-# load_app writes a "══ load_app LABEL ══" marker, so a scenario's log is
-# everything after that marker.
+# Each load_app writes a "══ load_app LABEL ══" marker, so a scenario's output
+# is everything after that marker — but only once the simulator has flushed,
+# which it does not do on any schedule this script controls. These are for
+# reading a finished run, NOT for asserting mid-scenario. Assertions use the
+# mock log (timely) or the course store (authoritative).
 
 _scenario_log() {
     local label="$1"
@@ -671,25 +683,20 @@ _scenario_log() {
         "${RESULTS}/simulator.log" 2>/dev/null || true
 }
 
-# assert_log_matches LABEL REGEX DESCRIPTION
-assert_log_matches() {
-    local label="$1" pattern="$2" desc="$3"
-    if _scenario_log "$label" | grep -qE "$pattern"; then
-        echo "[assert] PASS '$desc'"
+# assert_mock_served REGEX DESCRIPTION
+#
+# Asserts over what the mock actually served this scenario. Prefer this to a
+# simulator-log assertion for anything request-shaped: the mock flushes every
+# line, so this is true the moment it happens.
+assert_mock_served() {
+    local pattern="$1" desc="$2"
+    local hit
+    hit=$(grep -E "$pattern" "${RESULTS}/mock.log" 2>/dev/null | head -1 || true)
+    if [ -n "$hit" ]; then
+        echo "[assert] PASS '$desc' — ${hit}"
     else
-        echo "[assert] FAIL '$desc' — no /$pattern/ in scenario $label log"
+        echo "[assert] FAIL '$desc' — nothing matching /$pattern/ was served"
         ASSERT_FAILED=true
-    fi
-}
-
-# assert_log_not_matches LABEL REGEX DESCRIPTION
-assert_log_not_matches() {
-    local label="$1" pattern="$2" desc="$3"
-    if _scenario_log "$label" | grep -qE "$pattern"; then
-        echo "[assert] FAIL '$desc' — unexpected /$pattern/ in scenario $label log"
-        ASSERT_FAILED=true
-    else
-        echo "[assert] PASS '$desc'"
     fi
 }
 
@@ -791,7 +798,7 @@ assert_no_error_triangle "02_downloaded_first" "02: no exception"
 # channel shift), which is just outside the 25% fuzz window.  Observed count is
 # ~442 px.  Threshold of 200 gives headroom while staying above any chrome noise.
 assert_has_color "02_downloaded_first" 20 58 180 90 "#00FF00" "download screen shows green text" 200
-assert_log_matches A 'FIT_REQUEST' "A: widget requested the course as FIT"
+assert_mock_served 'FIT 111222333 .* bytes=' "A: widget requested the course as FIT"
 assert_course_stored "A: course parsed by the OS and stored as device content"
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -896,7 +903,7 @@ sleep 25
 screenshot "09_fit_full_records"
 fit_report F
 assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
-assert_log_matches F 'FIT_RESULT code=200' "F: full-record FIT transferred (HTTP 200)"
+assert_mock_served 'mode=full bytes=' "F: full-record FIT served to the widget"
 assert_course_stored "F: full-record FIT stored — the ?lean=0 fallback works"
 dump_course_store
 
@@ -918,6 +925,26 @@ dump_course_store
 
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── All scenarios complete ──────────────────────────────────"
+
+# Stop the simulator BEFORE reading its log. It buffers stdout, so while the
+# process lives the tail of the run is still sitting in that buffer — which is
+# why the last scenarios' sections once came out completely blank, and why a
+# passing store assertion sat next to a failing log assertion for the same
+# scenario. Terminating it flushes.
+if [ -n "$SIM_PID" ]; then
+    echo "[e2e] stopping simulator to flush its output buffer"
+    kill "$SIM_PID" 2>/dev/null || true
+    wait "$SIM_PID" 2>/dev/null || true
+    SIM_PID=""
+    sleep 2
+fi
+
+if [ -f "${RESULTS}/mock.log" ]; then
+    cat "${RESULTS}/mock.log" >> "${RESULTS}/mock-all.log"
+fi
+echo "[e2e] ── mock server log ─────────────────────────────────────────"
+cat "${RESULTS}/mock-all.log" 2>/dev/null || echo "[e2e] (no mock log)"
+echo "[e2e] ── end mock log ────────────────────────────────────────────"
 
 # Dump Monkey C / simulator log so it appears in the HTML report via run.log.
 # System.println() calls in the Monkey C app go to the simulator process's stdout
