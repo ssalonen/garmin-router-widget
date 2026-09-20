@@ -160,7 +160,21 @@ PYPATCH
 
 # ── Start CIQ Simulator ──────────────────────────────────────────────────────
 # Redirect simulator stdout so that Monkey C System.println() output is captured.
-DISPLAY=$DISP simulator >"${RESULTS}/simulator.log" 2>&1 &
+#
+# Line-buffer it. The simulator is a native binary, so writing to a file gets
+# libc's 4 KiB block buffering: println output sits in the buffer for an
+# arbitrary time before reaching the log. That is invisible when the log is
+# only read at the end of a run, but anything that *waits* on a log line is
+# then waiting on the buffer rather than on the app, which is how the first
+# attempt at polling deadlocked.
+_SIM_CMD=(simulator)
+if command -v stdbuf >/dev/null 2>&1; then
+    _SIM_CMD=(stdbuf -oL -eL simulator)
+    echo "[e2e] simulator stdout is line-buffered (stdbuf)"
+else
+    echo "[e2e] WARN: stdbuf unavailable — log waits may lag behind the app"
+fi
+DISPLAY=$DISP "${_SIM_CMD[@]}" >"${RESULTS}/simulator.log" 2>&1 &
 SIM_PID=$!
 sleep 5   # wait for simulator to be ready
 
@@ -557,12 +571,12 @@ _await_log() {
 wait_for_list() {
     local label="$1"
     _await_log "$label" 'Courses loaded|Empty course list|Course list failed' \
-        90 "course list settled"
+        90 "course list settled" || true
     # The enter_widget SELECT is meant to be swallowed by the STATE_LIST_READY
     # guard. If a download went out before any scenario asked for one, that
     # click raced the response — say so here rather than leaving a later
     # assertion to fail for a reason that looks unrelated.
-    if _scenario_log "$label" | grep -q 'FIT_REQUEST'; then
+    if _scenario_log "$label" | grep -q 'FIT_REQUEST' 2>/dev/null; then
         echo "[e2e] WARN: $label: a download fired during list load —" \
              "the enter_widget click raced the response"
     fi
@@ -572,7 +586,7 @@ wait_for_list() {
 # Block until the FIT response has been handled.
 wait_for_download() {
     local label="$1"
-    _await_log "$label" 'FIT_RESULT code=' 90 "FIT response"
+    _await_log "$label" 'FIT_RESULT code=' 90 "FIT response" || true
     sleep 3   # repaint
 }
 
@@ -813,11 +827,13 @@ assert_course_not_stored() {
 # enter_widget fires its SELECT click, so KEY_ENTER is a no-op at that point
 # (selectCourse() guards on STATE_LIST_READY).  The delay has to outlast the
 # load_app readiness gate plus activate(), or that click lands just as the
-# response does and fires a download by accident.  After wait_for_list the
-# list is loaded and the second SELECT (select_course) starts the download.
+# response does and fires a download by accident.  It also has to stay under
+# Connect IQ's own request timeout, or the list never arrives at all — 20 s
+# sits between the two.  After wait_for_list the list is loaded and the second
+# SELECT (select_course) starts the download.
 echo "[e2e] ── Scenario A: download first course ───────────────────────"
 reset_course_store
-start_mock normal 40
+start_mock normal 20
 load_app A
 activate
 enter_widget    # SELECT click while still in STATE_LOADING_LIST — no-op at app level
@@ -847,7 +863,7 @@ assert_course_stored "A: course parsed by the OS and stored as device content"
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario B: scroll attempt, download ───────────────────"
 reset_course_store
-start_mock normal 40
+start_mock normal 20
 load_app B
 activate
 enter_widget
@@ -869,7 +885,7 @@ assert_course_stored "B: course stored after scroll + select"
 # Scenario C — Server error (HTTP 500)
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario C: server error ────────────────────────────────"
-start_mock error 40
+start_mock error 20
 load_app C
 activate
 enter_widget
@@ -882,7 +898,7 @@ assert_has_color "05_error_state" 20 62 180 90 "#FF0000" "error state shows red 
 # Scenario D — Empty course list
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario D: empty courses ───────────────────────────────"
-start_mock empty 40
+start_mock empty 20
 load_app D
 activate
 enter_widget
@@ -897,7 +913,7 @@ assert_has_color "06_empty_courses" 20 62 180 90 "#FF0000" "empty list shows err
 # The test verifies no-crash and that the first page renders correctly.
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario E: multi-page course list (8 courses) ─────────"
-start_mock many 40
+start_mock many 20
 load_app E
 activate
 enter_widget
@@ -930,7 +946,7 @@ assert_no_error_triangle "08_multipage_after_downs" "08: no exception after 5 Do
 # ── Scenario F — full records (the ?lean=0 fallback) ────────────────────────
 echo "[e2e] ── Scenario F: FIT with full records (17 B/pt) ─────────────"
 reset_course_store
-start_mock full 40
+start_mock full 20
 load_app F
 activate
 enter_widget
@@ -947,7 +963,7 @@ dump_course_store
 # ── Scenario G — corrupt FIT (CONTROL) ──────────────────────────────────────
 echo "[e2e] ── Scenario G: corrupt FIT (control) ──────────────────────"
 reset_course_store
-start_mock corrupt 40
+start_mock corrupt 20
 load_app G
 activate
 enter_widget
