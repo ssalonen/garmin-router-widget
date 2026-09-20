@@ -94,7 +94,7 @@ class CourseListView extends WatchUi.View {
         // decodes but nothing on the device can consume it. The FIT path hands
         // the course to the OS so it lands in Navigation > Courses.
         var useFit = Application.Properties.getValue("useFitDownload");
-        if (useFit != null && useFit as Lang.Boolean) {
+        if ((useFit instanceof Lang.Boolean) && (useFit as Lang.Boolean)) {
             _loader.fetchCourseFit(
                 cid.toString(),
                 (_navigatingName != null) ? _navigatingName as Lang.String : "",
@@ -219,7 +219,9 @@ class CourseListView extends WatchUi.View {
                 if (it != null) {
                     var c = it.next();
                     while (c != null) {
-                        System.println("PERSISTED_COURSE name=" + c.getName());
+                        var nm = c.getName();
+                        System.println("PERSISTED_COURSE name="
+                            + ((nm != null) ? nm : "(unnamed)"));
                         n += 1;
                         c = it.next();
                     }
