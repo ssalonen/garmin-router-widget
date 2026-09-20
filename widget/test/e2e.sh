@@ -8,11 +8,14 @@
 #   4. Clicks device frame buttons, captures screenshots, and asserts pixel colours
 #
 # Scenarios:
-#   A  normal / navigate FIRST course  (Enter without Down)
-#   B  normal / navigate SECOND course (Down → Enter)
-#   C  error  / HTTP 500 → error state
-#   D  empty  / empty list → "No courses found"
-#   E  many   / 8 courses (2 pages of 5) → scroll to page 2
+#   A  normal  / download FIRST course  (Enter without Down)
+#   B  normal  / download SECOND course (Down → Enter)
+#   C  error   / HTTP 500 → error state
+#   D  empty   / empty list → "No courses found"
+#   E  many    / 8 courses (2 pages of 5) → scroll to page 2
+#   F  full    / FIT with timestamp+distance records (the ?lean=0 fallback)
+#   G  corrupt / damaged FIT must NOT be stored — the control that makes the
+#                positive results above mean something
 #
 # Usage (inside container, called by CI):
 #   e2e.sh [DEVICE] [CERT_PATH]
@@ -114,6 +117,7 @@ monkeyc -f monkey.jungle -d "$DEVICE" \
     -y "$CERT" -l 3
 echo "[e2e] Compiled OK → test-results/build/app.prg"
 
+
 # ── Patch simulator.json: remove behavior from UP/DOWN buttons ───────────────
 # edge530 simulator.json assigns behavior:"nextPage"/"previousPage" to the
 # up/down buttons.  In the widget loop this triggers carousel navigation at the
@@ -156,6 +160,19 @@ PYPATCH
 
 # ── Start CIQ Simulator ──────────────────────────────────────────────────────
 # Redirect simulator stdout so that Monkey C System.println() output is captured.
+#
+# THIS LOG LAGS THE APP BY ROUGHLY A BUFFER'S WORTH OF OUTPUT — around ten
+# seconds in practice, and more early in a run. The simulator buffers its
+# stdout when it is a file, and stdbuf -oL does not change that (measured: the
+# lag was identical with and without it), presumably because the binary does
+# not use libc stdio for this.
+#
+# The consequence is a rule, not a nuisance: never *wait* on a line in this
+# log, and never attribute a line to a scenario in real time. An attempt to
+# poll it for sequencing deadlocked on the buffer, and lines from one
+# scenario surfaced inside the next one's section. Log assertions run at the
+# end of a scenario, by which point the relevant output has flushed;
+# sequencing uses sleeps.
 DISPLAY=$DISP simulator >"${RESULTS}/simulator.log" 2>&1 &
 SIM_PID=$!
 sleep 5   # wait for simulator to be ready
@@ -479,32 +496,49 @@ start_mock() {
         kill "$MOCK_PID" 2>/dev/null || true
         sleep 1
     fi
-    python3 "$APP_DIR/test/mock_server.py" --port "$PORT" --mode "$new_mode" --delay "$new_delay" &
+    # The mock's stdout is the only *timely* record of what the widget asked
+    # for and what it got: mock_server.py prints with flush=True, whereas the
+    # simulator log lags by a buffer's worth of output and cannot be relied on
+    # mid-run. Request-level assertions read this file; mock.log holds the
+    # current scenario only, mock-all.log accumulates the run.
+    if [ -f "${RESULTS}/mock.log" ]; then
+        cat "${RESULTS}/mock.log" >> "${RESULTS}/mock-all.log"
+    fi
+    : > "${RESULTS}/mock.log"
+    printf '[mock] ══ %s (delay %ss) ══\n' "$new_mode" "$new_delay" >> "${RESULTS}/mock.log"
+    python3 "$APP_DIR/test/mock_server.py" --port "$PORT" --mode "$new_mode" --delay "$new_delay" \
+        >> "${RESULTS}/mock.log" 2>&1 &
     MOCK_PID=$!
     sleep 1
-    echo "[e2e] Mock server PID=$MOCK_PID  mode=$new_mode  delay=${new_delay}s"
+    echo "[e2e] Mock server PID=$MOCK_PID  mode=$new_mode  delay=${new_delay}s  → mock.log"
 }
 
 load_app() {
     local label="${1:-}"
+    local prg="test-results/build/app.prg"
     if [ -n "$APP_PID" ]; then
         kill "$APP_PID" 2>/dev/null || true
-        sleep 1
+        # Killing monkeydo does not immediately unload the app from the
+        # simulator, and a lingering instance still answers clicks from its
+        # own state. That is what made one scenario fire a course download
+        # from the previous scenario's loaded list. One second was not enough
+        # once several scenarios had run back to back.
+        sleep 5
     fi
     # Mark scenario boundary in the log so Monkey C println output is easy to attribute.
     printf '\n[e2e] ══ load_app %s ══\n' "${label:-?}" >> "${RESULTS}/simulator.log"
     # monkeydo stdout also carries some runtime messages; append to same log.
     # 300 s timeout: each scenario needs ~18-50 s; 30 s was too short and caused
     # monkeydo to drop the simulator connection mid-test, producing false crash triangles.
-    DISPLAY=$DISP timeout 300s monkeydo test-results/build/app.prg "$DEVICE" \
+    DISPLAY=$DISP timeout 300s monkeydo "$prg" "$DEVICE" \
         >>"${RESULTS}/simulator.log" 2>&1 &
     APP_PID=$!
     echo "[e2e] App loaded (PID=$APP_PID) — Monkey C log → ${RESULTS}/simulator.log"
 }
 
 wait_for_http() {
-    # Allow time for: app init + Communications.makeWebRequest + server response + onUpdate
-    sleep 15
+    # Cover the mock's 20 s delay plus the request round-trip and onUpdate.
+    sleep 28
 }
 
 # ── Pixel-level screenshot assertions ────────────────────────────────────────
@@ -635,42 +669,148 @@ assert_screenshots_differ() {
     fi
 }
 
+# ── Scenario log helpers (diagnostic) ────────────────────────────────────────
+#
+# Each load_app writes a "══ load_app LABEL ══" marker, so a scenario's output
+# is everything after that marker — but only once the simulator has flushed,
+# which it does not do on any schedule this script controls. These are for
+# reading a finished run, NOT for asserting mid-scenario. Assertions use the
+# mock log (timely) or the course store (authoritative).
+
+_scenario_log() {
+    local label="$1"
+    awk -v pat="══ load_app ${label} ══" 'index($0,pat){found=1;next} found' \
+        "${RESULTS}/simulator.log" 2>/dev/null || true
+}
+
+# assert_mock_served REGEX DESCRIPTION
+#
+# Asserts over what the mock actually served this scenario. Prefer this to a
+# simulator-log assertion for anything request-shaped: the mock flushes every
+# line, so this is true the moment it happens.
+assert_mock_served() {
+    local pattern="$1" desc="$2"
+    local hit
+    hit=$(grep -E "$pattern" "${RESULTS}/mock.log" 2>/dev/null | head -1 || true)
+    if [ -n "$hit" ]; then
+        echo "[assert] PASS '$desc' — ${hit}"
+    else
+        echo "[assert] FAIL '$desc' — nothing matching /$pattern/ was served"
+        ASSERT_FAILED=true
+    fi
+}
+
+# Print every FIT/PersistedContent line for a scenario, so a failing run is
+# diagnosable from the CI log alone.
+fit_report() {
+    local label="$1"
+    echo "[fit] ── scenario $label: FIT / PersistedContent lines ──"
+    _scenario_log "$label" | grep -E 'FIT_REQUEST|FIT_RESULT|PERSISTED_' || echo "[fit]   (none)"
+}
+
+# Where the simulator stores downloaded course content.
+COURSE_STORE="/tmp/com.garmin.connectiq/GARMIN/Courses"
+
+dump_course_store() {
+    echo "[fit] ── simulator content store ──"
+    for d in /tmp/com.garmin.connectiq /root/.Garmin/ConnectIQ; do
+        [ -d "$d" ] || continue
+        find "$d" \( -iname '*.fit' -o -ipath '*Course*' -o -ipath '*NewFiles*' \) \
+            -printf '%10s  %p\n' 2>/dev/null | head -40
+    done
+    echo "[fit] ── end content store ──"
+}
+
+# Empty the course store so each scenario starts from a known state.
+#
+# Without this the scenarios contaminate each other: every course here is
+# named "Morning Trail", so a leftover file from the previous scenario is
+# indistinguishable from a fresh write, and PersistedContent.getCourses()
+# happily reports the stale entry.
+reset_course_store() {
+    mkdir -p "$COURSE_STORE"
+    rm -f "$COURSE_STORE"/*.fit 2>/dev/null || true
+    echo "[fit] course store reset → $(_stored_fit_count) file(s)"
+}
+
+_stored_fit_count() {
+    find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' 2>/dev/null | wc -l | tr -d ' '
+}
+
+# The authoritative signal that a FIT was accepted.
+#
+# NOT the HTTP response code: Connect IQ reports 200 for a successful
+# *transfer*, whether or not the body parsed as FIT. A rejected file simply
+# never lands. So the question "did the device accept our FIT?" is answered
+# by the course store, not by the callback's code.
+assert_course_stored() {
+    local desc="$1"
+    local n; n=$(_stored_fit_count)
+    if [ "$n" -ge 1 ]; then
+        echo "[assert] PASS '$desc' — $n file(s) in course store:"
+        find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' -printf '           %10s  %f\n' 2>/dev/null
+    else
+        echo "[assert] FAIL '$desc' — course store is empty; the FIT was not accepted"
+        ASSERT_FAILED=true
+    fi
+}
+
+assert_course_not_stored() {
+    local desc="$1"
+    local n; n=$(_stored_fit_count)
+    if [ "$n" -eq 0 ]; then
+        echo "[assert] PASS '$desc' — course store still empty, file was rejected"
+    else
+        echo "[assert] FAIL '$desc' — something landed in the course store:"
+        find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' -printf '           %10s  %f\n' 2>/dev/null
+        ASSERT_FAILED=true
+    fi
+}
+
 # ════════════════════════════════════════════════════════════════════════════
-# Scenario A — Happy path: navigate to first course (no scroll)
+# Scenario A — Happy path: download first course (no scroll)
 # ════════════════════════════════════════════════════════════════════════════
 # Mock delay (15 s) ensures the HTTP response hasn't arrived yet when
 # enter_widget fires its SELECT click, so KEY_ENTER is a no-op at that point
-# (selectCourse() guards on STATE_LIST_READY).  After wait_for_http the list
-# is loaded and the second SELECT click (select_course) triggers navigation.
-echo "[e2e] ── Scenario A: navigate first course ───────────────────────"
-start_mock normal 15
+# (selectCourse() guards on STATE_LIST_READY).  The delay must comfortably
+# outlast activate(), or that click lands as the response does and fires a
+# download by accident, while staying under Connect IQ's own request timeout,
+# or the list never arrives at all.  20 s sits between the two.  After
+# wait_for_http the list is loaded and the second SELECT (select_course)
+# starts the download.
+echo "[e2e] ── Scenario A: download first course ───────────────────────"
+reset_course_store
+start_mock normal 20
 load_app A
 activate
 enter_widget    # SELECT click while still in STATE_LOADING_LIST — no-op at app level
-wait_for_http   # HTTP response arrives during this sleep; state → LIST_READY
+wait_for_http
 
 screenshot "01_course_list"
 assert_no_error_triangle "01_course_list" "01: no exception"
 assert_row_selected "01_course_list" 0 1 "row0 is highlighted on initial load"
 
 select_course   # second SELECT click → KEY_ENTER → selectCourse()
-sleep 20
-screenshot "02_navigating_first"
-assert_no_error_triangle "02_navigating_first" "02: no exception"
+sleep 25
+screenshot "02_downloaded_first"
+assert_no_error_triangle "02_downloaded_first" "02: no exception"
 # The resize from 280x375→246x322 darkens the pure #00FF00 text to ~#00B700 (28%
 # channel shift), which is just outside the 25% fuzz window.  Observed count is
 # ~442 px.  Threshold of 200 gives headroom while staying above any chrome noise.
-assert_has_color "02_navigating_first" 20 62 180 92 "#00FF00" "navigating state shows green text" 200
+assert_has_color "02_downloaded_first" 20 58 180 90 "#00FF00" "download screen shows green text" 200
+assert_mock_served 'FIT 111222333 .* bytes=' "A: widget requested the course as FIT"
+assert_course_stored "A: course parsed by the OS and stored as device content"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Scenario B — Scroll attempt + navigate
+# Scenario B — Scroll attempt + download
 # Note: physical simulator DOWN button clicks do not generate scroll events in
 # the simulator (behavior removed by PYPATCH to prevent carousel crash).
 # The DOWN clicks here verify no-crash behaviour; actual row selection is not
 # asserted since the simulator cannot scroll.
 # ════════════════════════════════════════════════════════════════════════════
-echo "[e2e] ── Scenario B: scroll attempt, navigate ───────────────────"
-start_mock normal 15
+echo "[e2e] ── Scenario B: scroll attempt, download ───────────────────"
+reset_course_store
+start_mock normal 20
 load_app B
 activate
 enter_widget
@@ -682,16 +822,17 @@ screenshot "03_course_list_after_down"
 assert_no_error_triangle "03_course_list_after_down" "03: no exception after Down"
 
 select_course
-sleep 20
-screenshot "04_navigating"
-assert_no_error_triangle "04_navigating" "04: no exception"
-assert_has_color "04_navigating" 20 62 180 92 "#00FF00" "navigating state shows green text" 200
+sleep 25
+screenshot "04_downloaded"
+assert_no_error_triangle "04_downloaded" "04: no exception"
+assert_has_color "04_downloaded" 20 58 180 90 "#00FF00" "download screen shows green text" 200
+assert_course_stored "B: course stored after scroll + select"
 
 # ════════════════════════════════════════════════════════════════════════════
 # Scenario C — Server error (HTTP 500)
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario C: server error ────────────────────────────────"
-start_mock error 15
+start_mock error 20
 load_app C
 activate
 enter_widget
@@ -704,7 +845,7 @@ assert_has_color "05_error_state" 20 62 180 90 "#FF0000" "error state shows red 
 # Scenario D — Empty course list
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario D: empty courses ───────────────────────────────"
-start_mock empty 15
+start_mock empty 20
 load_app D
 activate
 enter_widget
@@ -719,7 +860,7 @@ assert_has_color "06_empty_courses" 20 62 180 90 "#FF0000" "empty list shows err
 # The test verifies no-crash and that the first page renders correctly.
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario E: multi-page course list (8 courses) ─────────"
-start_mock many 15
+start_mock many 20
 load_app E
 activate
 enter_widget
@@ -739,7 +880,71 @@ screenshot "08_multipage_after_downs"
 assert_no_error_triangle "08_multipage_after_downs" "08: no exception after 5 Downs"
 
 # ════════════════════════════════════════════════════════════════════════════
+# FIT record formats — scenarios F/G
+# ════════════════════════════════════════════════════════════════════════════
+# A and B already cover the default (lean, 9.16 B/pt). These two cover the
+# fallback format and, crucially, the control.
+#
+# Read G first. If a deliberately corrupt FIT is stored, the device is not
+# validating anything and every "stored" result above is worthless. Note that
+# HTTP 200 cannot tell you this — a rejected FIT reports 200 as well, because
+# the code describes the transfer, not the parse. Only the course store does.
+
+# ── Scenario F — full records (the ?lean=0 fallback) ────────────────────────
+echo "[e2e] ── Scenario F: FIT with full records (17 B/pt) ─────────────"
+reset_course_store
+start_mock full 20
+load_app F
+activate
+enter_widget
+wait_for_http
+select_course
+sleep 25
+screenshot "09_fit_full_records"
+fit_report F
+assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
+assert_mock_served 'mode=full bytes=' "F: full-record FIT served to the widget"
+assert_course_stored "F: full-record FIT stored — the ?lean=0 fallback works"
+dump_course_store
+
+# ── Scenario G — corrupt FIT (CONTROL) ──────────────────────────────────────
+echo "[e2e] ── Scenario G: corrupt FIT (control) ──────────────────────"
+reset_course_store
+start_mock corrupt 20
+load_app G
+activate
+enter_widget
+wait_for_http
+select_course
+sleep 25
+screenshot "10_fit_corrupt"
+fit_report G
+assert_no_error_triangle "10_fit_corrupt" "10: no exception on corrupt FIT"
+assert_course_not_stored "G: corrupt FIT rejected — proves the device parses the body"
+dump_course_store
+
+# ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── All scenarios complete ──────────────────────────────────"
+
+# Stop the simulator BEFORE reading its log. It buffers stdout, so while the
+# process lives the tail of the run is still sitting in that buffer — which is
+# why the last scenarios' sections once came out completely blank, and why a
+# passing store assertion sat next to a failing log assertion for the same
+# scenario. Terminating it flushes.
+if [ -n "$SIM_PID" ]; then
+    echo "[e2e] stopping simulator to flush its output buffer"
+    kill "$SIM_PID" 2>/dev/null || true
+    wait "$SIM_PID" 2>/dev/null || true
+    SIM_PID=""
+    sleep 2
+fi
+
+if [ -f "${RESULTS}/mock.log" ]; then
+    cat "${RESULTS}/mock.log" >> "${RESULTS}/mock-all.log"
+fi
+echo "[e2e] ── mock server log ─────────────────────────────────────────"
+cat "${RESULTS}/mock-all.log" 2>/dev/null || echo "[e2e] (no mock log)"
+echo "[e2e] ── end mock log ────────────────────────────────────────────"
 
 # Dump Monkey C / simulator log so it appears in the HTML report via run.log.
 # System.println() calls in the Monkey C app go to the simulator process's stdout
@@ -753,7 +958,7 @@ fi
 echo "[e2e] ── end simulator log ─────────────────────────────────────"
 
 if [ "$ASSERT_FAILED" = "true" ]; then
-    echo "[e2e] FAIL: One or more pixel assertions failed — see above for details"
+    echo "[e2e] FAIL: One or more assertions failed — see above for details"
     exit 1
 fi
-echo "[e2e] PASS: All pixel assertions passed"
+echo "[e2e] PASS: All assertions passed"

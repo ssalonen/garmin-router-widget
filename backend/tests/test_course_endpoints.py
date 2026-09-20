@@ -1,17 +1,8 @@
 """Course endpoints backed by the single Garmin session, plus the optional
 shared X-Api-Key secret."""
-import base64
 import struct
 
-
-def _decode_ascii85_points(text: str) -> list[dict]:
-    data = base64.a85decode(text, adobe=False)
-    points = []
-    for i in range(0, len(data) - 7, 8):
-        lat = struct.unpack(">i", data[i:i+4])[0] / 1e7
-        lon = struct.unpack(">i", data[i+4:i+8])[0] / 1e7
-        points.append({"lat": lat, "lon": lon})
-    return points
+import fit
 
 
 # ── happy path (dev mode: no API_KEY) ────────────────────────────────────────
@@ -92,17 +83,18 @@ def test_courses_last_page_empty(client, fake_session):
     assert r.json()["courses"] == []
 
 
-def test_course_points_ascii85_roundtrip(client, fake_session):
+def test_course_points_survive_the_wire_format(client, fake_session):
+    """Both hemispheres — negative lat/lon are where sign handling breaks."""
     fake_session.points = [
         {"lat": 60.1699, "lon": 24.9384},
         {"lat": -33.8688, "lon": 151.2093},
     ]
     r = client.get("/api/course/111")
     assert r.status_code == 200
-    assert "text/plain" in r.headers["content-type"]
-    decoded = _decode_ascii85_points(r.text)
-    assert abs(decoded[0]["lat"] - 60.1699) < 1e-6
-    assert abs(decoded[1]["lon"] - 151.2093) < 1e-6
+    assert r.headers["content-type"] == "application/vnd.ant.fit"
+    for pt in fake_session.points:
+        assert struct.pack("<i", fit.semicircles(pt["lat"])) in r.content
+        assert struct.pack("<i", fit.semicircles(pt["lon"])) in r.content
 
 
 # ── upstream Garmin failure → 502 ────────────────────────────────────────────
@@ -150,3 +142,49 @@ def test_api_key_rejects_wrong_key(client, monkeypatch):
     monkeypatch.setenv("API_KEY", "s3cret")
     r = client.get("/api/courses", headers={"X-Api-Key": "nope"})
     assert r.status_code == 401
+
+
+# ── FIT course endpoint ──────────────────────────────────────────────────────
+
+def test_course_fit_returns_a_fit_file(client, fake_session):
+    fake_session.points = [
+        {"lat": 60.1699, "lon": 24.9384},
+        {"lat": 60.1750, "lon": 24.9450},
+    ]
+    r = client.get("/api/course/111222333?name=Morning+Trail")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/vnd.ant.fit"
+    assert r.content[8:12] == b".FIT"
+
+
+def test_course_fit_uses_the_supplied_name(client, fake_session):
+    fake_session.points = [{"lat": 60.1, "lon": 24.9}, {"lat": 60.2, "lon": 25.0}]
+    body = client.get("/api/course/1?name=Lakeside+Loop").content
+    assert b"Lakeside Loop\x00" in body
+
+
+def test_course_fit_falls_back_to_the_id_when_unnamed(client, fake_session):
+    fake_session.points = [{"lat": 60.1, "lon": 24.9}]
+    assert b"Course 777\x00" in client.get("/api/course/777").content
+
+
+def test_lean_fit_is_smaller_than_standard(client, fake_session):
+    fake_session.points = [{"lat": 60.0 + i / 1000, "lon": 24.0} for i in range(50)]
+    lean = client.get("/api/course/1?lean=1").content
+    std = client.get("/api/course/1?lean=0").content
+    assert len(lean) < len(std)
+
+
+def test_course_fit_404s_on_an_empty_course(client, fake_session):
+    fake_session.points = []
+    assert client.get("/api/course/1").status_code == 404
+
+
+def test_lean_is_the_default(client, fake_session):
+    """Lean records are what the simulator verified; ?lean=0 is the escape hatch."""
+    fake_session.points = [{"lat": 60.0 + i / 1000, "lon": 24.0} for i in range(50)]
+    default = client.get("/api/course/1").content
+    lean = client.get("/api/course/1?lean=1").content
+    full = client.get("/api/course/1?lean=0").content
+    assert default == lean
+    assert len(default) < len(full)

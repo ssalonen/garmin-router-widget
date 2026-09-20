@@ -4,6 +4,7 @@
 using Toybox.Application;
 using Toybox.Graphics;
 using Toybox.Lang;
+using Toybox.PersistedContent;
 using Toybox.System;
 using Toybox.WatchUi;
 
@@ -22,7 +23,7 @@ class CourseListView extends WatchUi.View {
     var state           as Lang.Number;
     var _courses        as Lang.Array?;
     var _selectedIdx    as Lang.Number;
-    var _navigatingName as Lang.String?;
+    var _courseName     as Lang.String?;
     var _errorMsg       as Lang.String?;
     var _errorCode      as Lang.Number;
     var _lastDurationMs as Lang.Number;
@@ -36,7 +37,7 @@ class CourseListView extends WatchUi.View {
         state           = STATE_LOADING_LIST;
         _courses        = null;
         _selectedIdx    = 0;
-        _navigatingName = null;
+        _courseName     = null;
         _errorMsg       = null;
         _errorCode      = 0;
         _lastDurationMs = 0;
@@ -79,13 +80,15 @@ class CourseListView extends WatchUi.View {
         if (!(course instanceof Lang.Dictionary)) { return; }
         var courseDict = course as Lang.Dictionary;
         var cname = courseDict.get("name");
-        _navigatingName = (cname != null) ? cname.toString() : "";
+        _courseName = (cname != null) ? cname.toString() : "";
         state = STATE_LOADING_COURSE;
         WatchUi.requestUpdate();
         var cid = courseDict.get("id");
-        if (cid != null) {
-            _loader.fetchCoursePoints(cid.toString(), method(:onCoursePointsResponse));
-        }
+        if (cid == null) { return; }
+        _loader.fetchCourseFit(
+            cid.toString(),
+            (_courseName != null) ? _courseName as Lang.String : "",
+            method(:onCourseFitResponse));
     }
 
     function refresh() as Void {
@@ -133,37 +136,70 @@ class CourseListView extends WatchUi.View {
         WatchUi.requestUpdate();
     }
 
-    // Called by CourseLoader with (code, data, durationMs)
-    function onCoursePointsResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
+    // Called by CourseLoader with (code, data, durationMs) after a FIT fetch.
+    //
+    // A note on what we can and cannot know here, both learned the hard way in
+    // the e2e FIT scenarios:
+    //
+    //   * code == 200 means the bytes arrived, NOT that the FIT parsed. A
+    //     deliberately corrupt file also returns 200 and is then silently
+    //     discarded by the OS.
+    //   * PersistedContent.getCourses() can serve a stale entry — it reported
+    //     a course whose file had already been removed from the course store.
+    //
+    // So the widget genuinely cannot confirm the save, and this screen must
+    // not claim it did. It reports the download and points at the Courses
+    // menu, which is where the truth is. The e2e tests assert on the course
+    // store directly, which is the only signal that tracked reality.
+    function onCourseFitResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
         _lastDurationMs = durationMs;
-        if (code == 200 && data instanceof Lang.String) {
-            var locs = decodeBinaryPoints(decodeAscii85(data as Lang.String));
-            if (locs.size() > 0) {
-                // Toybox.Navigation does not exist in the CIQ SDK; navigation
-                // must be started via the device's native route/course UI.
-                state = STATE_NAVIGATING;
-                _logger.info("Navigation started", {
-                    "name" => _navigatingName,
-                    "pts"  => locs.size(),
-                    "ms"   => durationMs
-                });
-            } else {
-                state      = STATE_ERROR;
-                _errorMsg  = "Empty route";
-                _errorCode = code;
-                _logger.error("Zero points in response", {"http_status" => code});
-            }
+        if (code == 200) {
+            state = STATE_COURSE_SAVED;
+            _logger.info("Course FIT downloaded", {
+                "name" => _courseName,
+                "ms"   => durationMs
+            });
+            _dumpPersistedCourses();
         } else {
             state      = STATE_ERROR;
             _errorMsg  = httpErrorString(code);
             _errorCode = code;
-            _logger.error("Course fetch failed", {
+            _logger.error("Course FIT failed", {
                 "http_status" => code,
-                "name"        => _navigatingName,
+                "name"        => _courseName,
                 "ms"          => durationMs
             });
         }
         WatchUi.requestUpdate();
+    }
+
+    // Diagnostic only — see the caveat above about staleness. Printed so the
+    // e2e log and a real device session can be compared against the course
+    // store; never used to decide what the user is told.
+    function _dumpPersistedCourses() as Void {
+        var n = 0;
+        try {
+            if (PersistedContent has :getCourses) {
+                var it = PersistedContent.getCourses();
+                if (it != null) {
+                    var c = it.next();
+                    while (c != null) {
+                        var nm = c.getName();
+                        System.println("PERSISTED_COURSE name="
+                            + ((nm != null) ? nm : "(unnamed)"));
+                        n += 1;
+                        c = it.next();
+                    }
+                }
+            } else {
+                System.println("PERSISTED_UNSUPPORTED getCourses missing");
+                return;
+            }
+        } catch (ex instanceof Lang.Exception) {
+            System.println("PERSISTED_ERROR " + ex.getErrorMessage());
+            return;
+        }
+        System.println("PERSISTED_COURSE_COUNT " + n);
     }
 
     // ---- Drawing --------------------------------------------------------
@@ -188,9 +224,9 @@ class CourseListView extends WatchUi.View {
         } else if (state == STATE_LIST_READY) {
             _drawList(dc);
             _drawFooter(dc, "UP/DN  START:go  LAP:refresh");
-        } else if (state == STATE_NAVIGATING) {
-            _drawNavigating(dc);
-            _drawFooter(dc, "BACK: exit");
+        } else if (state == STATE_COURSE_SAVED) {
+            _drawCourseSaved(dc);
+            _drawFooter(dc, "BACK: exit, then Courses");
         } else if (state == STATE_ERROR) {
             _drawError(dc);
             _drawFooter(dc, "START:retry  BACK:exit");
@@ -258,13 +294,22 @@ class CourseListView extends WatchUi.View {
         }
     }
 
-    function _drawNavigating(dc as Graphics.Dc) as Void {
+    // End state for the FIT path. Deliberately says "Downloaded", not
+    // "Saved": the widget cannot verify that the OS kept the file (see
+    // onCourseFitResponse). It points at the menu where the user can see for
+    // themselves rather than asserting something it does not know.
+    function _drawCourseSaved(dc as Graphics.Dc) as Void {
+        var cx = dc.getWidth() / 2;
         dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(dc.getWidth() / 2, 65, Graphics.FONT_MEDIUM,
-            "Navigating:", Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, 62, Graphics.FONT_MEDIUM, "Downloaded:",
+            Graphics.TEXT_JUSTIFY_CENTER);
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        var name = (_navigatingName != null) ? _navigatingName : "";
-        dc.drawText(dc.getWidth() / 2, 95, Graphics.FONT_SMALL, name,
+        var name = (_courseName != null) ? _courseName : "";
+        dc.drawText(cx, 92, Graphics.FONT_SMALL, name, Graphics.TEXT_JUSTIFY_CENTER);
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, 116, Graphics.FONT_XTINY, "Find it under Courses",
+            Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, 130, Graphics.FONT_XTINY, _lastDurationMs + "ms",
             Graphics.TEXT_JUSTIFY_CENTER);
     }
 
@@ -341,7 +386,7 @@ class CourseListView extends WatchUi.View {
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
 
         var stateLabels = [
-            "LOADING_LIST", "LIST_READY", "LOADING_COURSE", "NAVIGATING", "ERROR"
+            "LOADING_LIST", "LIST_READY", "LOADING_COURSE", "COURSE_SAVED", "ERROR"
         ];
         var stateLabel = (state >= 0 && state < stateLabels.size())
             ? stateLabels[state].toString()

@@ -2,30 +2,44 @@
 """Mock backend for garmin-router-widget E2E tests.
 
 Usage:
-  python3 mock_server.py [--port PORT] [--mode normal|many|empty|error] [--delay SECS]
+  python3 mock_server.py [--port PORT] [--mode MODE] [--delay SECS]
 
 Modes:
-  normal  - 3 courses + ASCII85 course-point payloads (default)
-  many    - 8 courses (two screenfuls of 5 rows each) + payloads
-  empty   - 0 courses (triggers "No courses found" error state)
-  error   - HTTP 500 on every request (triggers network error state)
+  normal   - 3 courses; /api/course/{id} serves a lean FIT course (default)
+  full     - as normal, but FIT records carry timestamp+distance (17 B/pt)
+  corrupt  - as normal, but the FIT body is deliberately damaged. The control
+             case: a device that stores this is not validating anything, so
+             the positive results would mean nothing.
+  many     - 8 courses (two screenfuls of 5 rows each)
+  empty    - 0 courses (triggers "No courses found" error state)
+  error    - HTTP 500 on every request (triggers network error state)
 
 --delay SECS
   Add an artificial delay (float, seconds) before responding to /api/courses
   and HTTP-500 error responses.  Used in e2e tests to ensure the widget is
   still in STATE_LOADING_LIST when the SELECT (enter_widget) click fires,
   which prevents KEY_ENTER from triggering selectCourse() prematurely.
-  Course-point requests (/api/course/{id}) are NOT delayed so that the
-  navigation screenshot still completes within the existing 20 s sleep.
+  Course requests (/api/course/{id}) are NOT delayed so that the
+  download screenshot still completes within the existing sleep.
 """
 
-import base64
 import json
-import struct
+import os
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
+
+# Import the backend's real FIT encoder rather than reimplementing it: the
+# point of the FIT scenarios is to prove the bytes the backend would actually
+# send are the bytes the device accepts.  In the repo it sits at ../../backend;
+# in the test container widget/ is mounted at /app and backend/ at /backend.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _cand in (os.path.join(_HERE, "..", "..", "backend"), "/backend"):
+    if os.path.isfile(os.path.join(_cand, "fit.py")):
+        sys.path.insert(0, _cand)
+        break
+import fit  # noqa: E402
 
 # ── Parse CLI args ──────────────────────────────────────────────────────────
 port = 8765
@@ -44,22 +58,6 @@ while i < len(sys.argv):
         i += 2
     else:
         i += 1
-
-# ── Encoding helpers ────────────────────────────────────────────────────────
-
-def _pack_points(pts):
-    """Pack (lat, lon) pairs as big-endian int32 * 1e7."""
-    buf = b""
-    for lat, lon in pts:
-        buf += struct.pack(">i", round(lat * 1e7))
-        buf += struct.pack(">i", round(lon * 1e7))
-    return buf
-
-
-def _encode_points(pts):
-    """ASCII85-encode packed course points for text/plain transport."""
-    return base64.a85encode(_pack_points(pts), adobe=False).decode("ascii")
-
 
 # ── Course catalogue ────────────────────────────────────────────────────────
 # 3-course set (normal mode) + 5 additional (many mode)
@@ -80,33 +78,18 @@ COURSES_EXTRA = [
 
 COURSES_MANY = COURSES_NORMAL + COURSES_EXTRA  # 8 total → 2 pages of 5
 
-COURSE_POINTS = {
+# Raw (lat, lon) per course — the FIT bodies are generated from this.
+COURSE_LATLON = {
     # Page 1 courses
-    "111222333": _encode_points([
-        (60.1699, 24.9384), (60.1750, 24.9450), (60.1780, 24.9500),
-    ]),
-    "444555666": _encode_points([
-        (60.1800, 25.0000), (60.1900, 25.0100),
-    ]),
-    "777888999": _encode_points([
-        (60.2000, 25.0200), (60.2100, 25.0300), (60.2200, 25.0400),
-    ]),
-    "101010101": _encode_points([
-        (61.4978, 23.7610), (61.5100, 23.7800), (61.5200, 23.8000),
-    ]),
-    "202020202": _encode_points([
-        (60.4518, 22.2666), (60.4600, 22.2800),
-    ]),
+    "111222333": [(60.1699, 24.9384), (60.1750, 24.9450), (60.1780, 24.9500)],
+    "444555666": [(60.1800, 25.0000), (60.1900, 25.0100)],
+    "777888999": [(60.2000, 25.0200), (60.2100, 25.0300), (60.2200, 25.0400)],
+    "101010101": [(61.4978, 23.7610), (61.5100, 23.7800), (61.5200, 23.8000)],
+    "202020202": [(60.4518, 22.2666), (60.4600, 22.2800)],
     # Page 2 courses
-    "303030303": _encode_points([
-        (60.2052, 24.6559), (60.2100, 24.6700), (60.2200, 24.6900),
-    ]),
-    "404040404": _encode_points([
-        (60.2934, 25.0378), (60.3000, 25.0500),
-    ]),
-    "505050505": _encode_points([
-        (66.5039, 25.7294), (66.5100, 25.7400), (66.5200, 25.7600),
-    ]),
+    "303030303": [(60.2052, 24.6559), (60.2100, 24.6700), (60.2200, 24.6900)],
+    "404040404": [(60.2934, 25.0378), (60.3000, 25.0500)],
+    "505050505": [(66.5039, 25.7294), (66.5100, 25.7400), (66.5200, 25.7600)],
 }
 
 
@@ -132,19 +115,34 @@ class Handler(BaseHTTPRequestHandler):
                 courses = []
             elif mode == "many":
                 courses = COURSES_MANY
-            else:
+            else:  # normal, full, corrupt
                 courses = COURSES_NORMAL
             body = json.dumps({"courses": courses}).encode()
             self._respond(200, "application/json", body)
 
         elif path.startswith("/api/course/"):
             course_id = path.split("/")[-1]
-            encoded = COURSE_POINTS.get(course_id)
-            if encoded:
-                self._respond(200, "text/plain; charset=ascii", encoded.encode("ascii"))
-            else:
+            pts = COURSE_LATLON.get(course_id)
+            if not pts:
                 self.send_response(404)
                 self.end_headers()
+                return
+            qs = parse_qs(urlparse(self.path).query)
+            name = qs.get("name", [f"Course {course_id}"])[0]
+            blob = fit.encode_course_fit(
+                name, [{"lat": la, "lon": lo} for la, lo in pts],
+                lean=(mode != "full"),
+            )
+            if mode == "corrupt":
+                # Corrupt the body while keeping the length: the control case
+                # that proves the device is really parsing, not just accepting
+                # any 200 response.
+                blob = bytearray(blob)
+                for i in range(14, min(len(blob), 40)):
+                    blob[i] ^= 0xFF
+                blob = bytes(blob)
+            print(f"[mock] FIT {course_id} name={name!r} mode={mode} bytes={len(blob)}", flush=True)
+            self._respond(200, "application/vnd.ant.fit", blob)
 
         else:
             self.send_response(404)

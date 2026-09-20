@@ -2,8 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Work branches are built too: the e2e job needs a real Connect IQ
+    # simulator in Docker, so there is no local equivalent a contributor
+    # could run instead, and waiting for a PR to find a compile error is a
+    # slow loop. Drop the glob if branch builds get noisy.
+    branches: [main, 'claude/**']
   pull_request:
+  workflow_dispatch:
 
 env:
   CIQ_IMAGE: ghcr.io/ssalonen/garmin-router-widget/connectiq-builder:9.1.0
@@ -116,19 +121,24 @@ jobs:
         run: docker load -i /tmp/connectiq-builder.tar
 
       - name: Run E2E tests with mock API server
-        # Mounts widget/ at /app inside the container.
+        # Mounts widget/ at /app, and backend/ at /backend so mock_server.py can
+        # import the real FIT encoder — the tests must exercise the bytes the
+        # backend would actually send, not a reimplementation.
         # e2e.sh starts mock_server.py, patches backendUrl to http://127.0.0.1:8765
-        # in a temp copy of the source, compiles the widget, then runs five scenarios:
-        #   A) normal — course list + navigate first course
-        #   B) normal — scroll to second course + navigate
-        #   C) error  — HTTP 500 → error state
-        #   D) empty  — empty JSON list → "No courses found"
-        #   E) many   — 8 courses (2 pages of 5) → scroll to page 2
+        # in a temp copy of the source, compiles the widget, then runs:
+        #   A) normal  — course list + download first course
+        #   B) normal  — scroll to second course + download
+        #   C) error   — HTTP 500 → error state
+        #   D) empty   — empty JSON list → "No courses found"
+        #   E) many    — 8 courses (2 pages of 5) → scroll to page 2
+        #   F) full    — FIT with timestamp+distance records (?lean=0 fallback)
+        #   G) corrupt — damaged FIT must NOT be stored (control for A/B/F)
         # Screenshots and run.log are written to widget/test-results/e2e/.
         run: |
           mkdir -p widget/test-results/e2e
           docker run --rm \
             -v "$PWD/widget:/app" \
+            -v "$PWD/backend:/backend:ro" \
             --workdir /app \
             -e CONNECTIQ_HOME=/opt/connectiq-sdk \
             --entrypoint /bin/bash \
