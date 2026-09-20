@@ -10,7 +10,10 @@ The script:
   - Writes the complete page to --output.
   - Prints a Markdown+HTML step-summary fragment to stdout (pipe to
     $GITHUB_STEP_SUMMARY).  GitHub renders data-URI <img> tags in step
-    summaries, so the screenshots appear inline in the Actions UI.
+    summaries, so screenshots can appear inline in the Actions UI — but the
+    summary is capped at 1 MiB and is dropped WHOLESALE when it exceeds that,
+    so the fragment is assembled against a byte budget: the assertion table
+    always survives, and screenshots are inlined only while they fit.
 """
 
 import argparse
@@ -191,72 +194,92 @@ def _build_html(pngs, log_html, pass_lines, fail_lines,
 
 # ── step-summary fragment (printed to stdout → $GITHUB_STEP_SUMMARY) ──────────
 
-def _colorise_inline(log: str) -> str:
-    """Like _colorise but uses inline styles (safe for GitHub step summaries)."""
-    styles = {
-        "pass": "color:#66bb6a",
-        "fail": "color:#ef5350;font-weight:bold",
-        "info": "color:#42a5f5",
-        "warn": "color:#ffa726",
-    }
-    out = []
-    for raw in log.splitlines():
-        esc = html.escape(raw)
-        if "[assert] PASS" in raw:
-            esc = f'<span style="{styles["pass"]}">{esc}</span>'
-        elif "[assert] FAIL" in raw or ("FAIL" in raw and "[e2e]" in raw):
-            esc = f'<span style="{styles["fail"]}">{esc}</span>'
-        elif raw.startswith("ERROR:"):
-            esc = f'<span style="{styles["fail"]}">{esc}</span>'
-        elif raw.startswith("INFO:"):
-            esc = f'<span style="{styles["info"]}">{esc}</span>'
-        elif raw.startswith("WARN:"):
-            esc = f'<span style="{styles["warn"]}">{esc}</span>'
-        out.append(esc)
-    return "\n".join(out)
+# GitHub drops a step summary larger than 1 MiB instead of truncating it, so
+# the whole report vanishes. Aim well under, since the cap counts bytes and the
+# screenshots are the only part that can grow without bound.
+SUMMARY_LIMIT_BYTES = 1024 * 1024
+SUMMARY_BUDGET_BYTES = 900_000
 
 
-def _build_summary(pngs, pass_lines, fail_lines, shot_asserts=None, log_raw=""):
+def _img_markdown(stem: str, data: str) -> str:
+    return (f'<img src="data:image/png;base64,{data}" '
+            f'alt="{html.escape(stem)}" height="220">  ')
+
+
+def _build_summary(pngs, pass_lines, fail_lines, shot_asserts=None,
+                   budget=SUMMARY_BUDGET_BYTES):
+    """Markdown for $GITHUB_STEP_SUMMARY, assembled to stay under the cap.
+
+    The assertion table is the part worth protecting: it is small, and it is
+    what tells you whether the run passed. Screenshots are inlined only while
+    the budget holds, and the ones attached to a failing assertion go first —
+    a red run is precisely the run whose images you want, and (before this was
+    budgeted) precisely the run that blew the cap and lost the whole summary.
+
+    The full HTML report, with every screenshot and the complete log, is
+    written to --output and uploaded as a build artifact regardless.
+    """
     shot_asserts = shot_asserts or {}
     overall = "✅ PASS" if not fail_lines else f"❌ FAIL ({len(fail_lines)} assertion(s) failed)"
-    lines = [
+
+    head = [
         f"## E2E Test Report — {overall}",
+        "",
+        f"{len(pass_lines)} passed · {len(fail_lines)} failed · {len(pngs)} screenshots",
         "",
         "| | Assertion |",
         "|-|-----------|",
     ]
     for l in pass_lines:
-        lines.append(f"| ✅ | {_label(l, 'PASS')} |")
+        head.append(f"| ✅ | {_label(l, 'PASS')} |")
     for l in fail_lines:
-        lines.append(f"| ❌ | {_label(l, 'FAIL')} |")
-    lines += ["", "### Screenshots", ""]
+        head.append(f"| ❌ | {_label(l, 'FAIL')} |")
+    head += ["", "### Screenshots", ""]
+
+    # Text block per screenshot, without the image.
+    blocks = []
     for idx, (stem, data) in enumerate(pngs, 1):
         asserts = shot_asserts.get(stem, [])
-        # Header line: number + name
-        lines.append(f"**#{idx} {stem}**  ")
-        lines.append(
-            f'<img src="data:image/png;base64,{data}" '
-            f'alt="{html.escape(stem)}" height="220">  '
-        )
-        # Assertion results under the image
+        text = [f"**#{idx} {stem}**  "]
         if asserts:
             for status, lbl in asserts:
                 icon = "✅" if status == "PASS" else "❌"
-                lines.append(f"{icon} {html.escape(lbl)}  ")
+                text.append(f"{icon} {html.escape(lbl)}  ")
         else:
-            lines.append("*— no assertions*  ")
+            text.append("*— no assertions*  ")
+        failed = any(status == "FAIL" for status, _ in asserts)
+        blocks.append({"stem": stem, "data": data, "text": text, "failed": failed})
+
+    used = len("\n".join(head).encode())
+    for b in blocks:
+        used += len("\n".join(b["text"]).encode()) + 2
+    used += 300  # footer allowance
+
+    # Failing screenshots claim budget first; ties keep source order.
+    order = sorted(range(len(blocks)), key=lambda i: (not blocks[i]["failed"], i))
+    for i in order:
+        cost = len(_img_markdown(blocks[i]["stem"], blocks[i]["data"]).encode()) + 2
+        if used + cost > budget:
+            continue
+        blocks[i]["inline"] = True
+        used += cost
+
+    lines = list(head)
+    omitted = 0
+    for b in blocks:
+        lines.append(b["text"][0])
+        if b.get("inline"):
+            lines.append(_img_markdown(b["stem"], b["data"]))
+        else:
+            omitted += 1
+        lines += b["text"][1:]
         lines.append("")
-    if log_raw:
-        log_html = _colorise_inline(log_raw)
+
+    if omitted:
         lines += [
-            "",
-            "<details><summary>Full test log</summary>",
-            "",
-            f'<pre style="background:#111;color:#e0e0e0;padding:12px;'
-            f'font-size:.80em;line-height:1.5;white-space:pre-wrap;'
-            f'word-break:break-all;border-radius:4px">{log_html}</pre>',
-            "",
-            "</details>",
+            f"_{omitted} of {len(pngs)} screenshots omitted to stay under "
+            f"GitHub's {SUMMARY_LIMIT_BYTES // 1024} KiB step-summary limit. "
+            f"All of them, plus the full log, are in the `e2e-report` artifact._",
         ]
     return "\n".join(lines)
 
@@ -291,7 +314,11 @@ def main():
     print(f"[gen_report] wrote {out} ({out.stat().st_size // 1024} KB)", file=sys.stderr)
 
     # stdout → caller pipes to $GITHUB_STEP_SUMMARY
-    print(_build_summary(pngs, pass_lines, fail_lines, shot_asserts, log_raw))
+    summary = _build_summary(pngs, pass_lines, fail_lines, shot_asserts)
+    size = len(summary.encode())
+    print(f"[gen_report] step summary {size // 1024} KiB "
+          f"(cap {SUMMARY_LIMIT_BYTES // 1024} KiB)", file=sys.stderr)
+    print(summary)
 
 
 if __name__ == "__main__":
