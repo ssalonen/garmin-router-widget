@@ -2,10 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Work branches are built too: the e2e job needs a real Connect IQ
+    # simulator in Docker, so there is no local equivalent a contributor
+    # could run instead, and waiting for a PR to find a compile error is a
+    # slow loop. Drop the glob if branch builds get noisy.
+    branches: [main, 'claude/**']
   pull_request:
-  # Lets a feature branch be verified before it has a PR — the e2e job needs a
-  # real simulator, so there is no local equivalent to run instead.
   workflow_dispatch:
 
 env:
