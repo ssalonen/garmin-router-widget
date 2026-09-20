@@ -695,7 +695,9 @@ spike_report() {
     _scenario_log "$label" | grep -E 'FIT_REQUEST|FIT_RESULT|PERSISTED_' || echo "[spike]   (none)"
 }
 
-# Where did the simulator put downloaded content?
+# Where the simulator stores downloaded course content.
+COURSE_STORE="/tmp/com.garmin.connectiq/GARMIN/Courses"
+
 dump_course_store() {
     echo "[spike] ── simulator content store ──"
     for d in /tmp/com.garmin.connectiq /root/.Garmin/ConnectIQ; do
@@ -704,6 +706,52 @@ dump_course_store() {
             -printf '%10s  %p\n' 2>/dev/null | head -40
     done
     echo "[spike] ── end content store ──"
+}
+
+# Empty the course store so each scenario starts from a known state.
+#
+# Without this the scenarios contaminate each other: every course here is
+# named "Morning Trail", so a leftover file from the previous scenario is
+# indistinguishable from a fresh write, and PersistedContent.getCourses()
+# happily reports the stale entry.
+reset_course_store() {
+    mkdir -p "$COURSE_STORE"
+    rm -f "$COURSE_STORE"/*.fit 2>/dev/null || true
+    echo "[spike] course store reset → $(_stored_fit_count) file(s)"
+}
+
+_stored_fit_count() {
+    find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' 2>/dev/null | wc -l | tr -d ' '
+}
+
+# The authoritative signal that a FIT was accepted.
+#
+# NOT the HTTP response code: Connect IQ reports 200 for a successful
+# *transfer*, whether or not the body parsed as FIT. A rejected file simply
+# never lands. So the question "did the device accept our FIT?" is answered
+# by the course store, not by the callback's code.
+assert_course_stored() {
+    local desc="$1"
+    local n; n=$(_stored_fit_count)
+    if [ "$n" -ge 1 ]; then
+        echo "[assert] PASS '$desc' — $n file(s) in course store:"
+        find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' -printf '           %10s  %f\n' 2>/dev/null
+    else
+        echo "[assert] FAIL '$desc' — course store is empty; the FIT was not accepted"
+        ASSERT_FAILED=true
+    fi
+}
+
+assert_course_not_stored() {
+    local desc="$1"
+    local n; n=$(_stored_fit_count)
+    if [ "$n" -eq 0 ]; then
+        echo "[assert] PASS '$desc' — course store still empty, file was rejected"
+    else
+        echo "[assert] FAIL '$desc' — something landed in the course store:"
+        find "$COURSE_STORE" -maxdepth 1 -iname '*.fit' -printf '           %10s  %f\n' 2>/dev/null
+        ASSERT_FAILED=true
+    fi
 }
 
 if [ "${SPIKE_ONLY:-0}" != "1" ]; then
@@ -833,6 +881,7 @@ dump_course_store
 
 # ── Scenario F — standard FIT ───────────────────────────────────────────────
 echo "[e2e] ── Scenario F: FIT download (standard records) ────────────"
+reset_course_store
 start_mock fit 15
 load_app F "$FIT_PRG"
 activate
@@ -844,12 +893,14 @@ screenshot "09_fit_standard"
 spike_report F
 assert_no_error_triangle "09_fit_standard" "09: no exception on FIT download"
 assert_log_matches F 'FIT_REQUEST' "F: widget issued a FIT request"
-assert_log_matches F 'FIT_RESULT code=200' "F: standard FIT accepted (HTTP 200)"
-assert_log_matches F 'PERSISTED_COURSE name=Morning Trail' "F: course stored under its name"
+assert_log_matches F 'FIT_RESULT code=200' "F: standard FIT transferred (HTTP 200)"
+assert_course_stored "F: standard FIT parsed and stored as device course content"
+assert_log_matches F 'PERSISTED_COURSE name=Morning Trail' "F: course readable via PersistedContent"
 dump_course_store
 
 # ── Scenario G — lean FIT (9 B/pt) ──────────────────────────────────────────
 echo "[e2e] ── Scenario G: FIT download (lean records, 9 B/pt) ───────"
+reset_course_store
 start_mock fit-lean 15
 load_app G "$FIT_PRG"
 activate
@@ -860,12 +911,13 @@ sleep 25
 screenshot "10_fit_lean"
 spike_report G
 assert_no_error_triangle "10_fit_lean" "10: no exception on lean FIT download"
-assert_log_matches G 'FIT_RESULT code=200' "G: lean FIT accepted (HTTP 200)"
-assert_log_matches G 'PERSISTED_COURSE name=Morning Trail' "G: lean course stored under its name"
+assert_log_matches G 'FIT_RESULT code=200' "G: lean FIT transferred (HTTP 200)"
+assert_course_stored "G: lean FIT (9 B/pt) parsed and stored — no per-record timestamp needed"
 dump_course_store
 
 # ── Scenario H — corrupt FIT (control) ──────────────────────────────────────
 echo "[e2e] ── Scenario H: corrupt FIT (control) ─────────────────────"
+reset_course_store
 start_mock fit-bad 15
 load_app H "$FIT_PRG"
 activate
@@ -876,16 +928,17 @@ sleep 25
 screenshot "11_fit_corrupt"
 spike_report H
 assert_no_error_triangle "11_fit_corrupt" "11: no exception on corrupt FIT"
-assert_log_not_matches H 'FIT_RESULT code=200' \
-    "H: corrupt FIT rejected — proves the device really parses the body"
+assert_course_not_stored "H: corrupt FIT rejected — proves the device really parses the body"
 dump_course_store
 
 echo "[spike] ══════ FIT spike complete ══════"
-echo "[spike] Read the three FIT_RESULT codes together:"
-echo "[spike]   F=200 G=200 H!=200  → FIT download works; lean records fine"
-echo "[spike]   F=200 G!=200 H!=200 → works, but records need timestamp+distance"
-echo "[spike]   F!=200              → our FIT is rejected; see the code"
-echo "[spike]   H=200               → INCONCLUSIVE: no parsing is happening"
+echo "[spike] Read the three course-store outcomes together."
+echo "[spike] (HTTP 200 only means the bytes arrived — a rejected FIT also"
+echo "[spike]  reports 200. Whether the file LANDS is the real verdict.)"
+echo "[spike]   F stored, G stored, H empty  → works; lean 9 B/pt records fine"
+echo "[spike]   F stored, G empty, H empty   → works, but records need timestamp+distance"
+echo "[spike]   F empty                      → our FIT is rejected outright"
+echo "[spike]   H stored                     → INCONCLUSIVE: nothing is being validated"
 
 fi  # SPIKE guard
 
