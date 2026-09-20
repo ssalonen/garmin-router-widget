@@ -55,6 +55,54 @@ sideloaded `.prg`, so treat it as a coarse gate, not real auth.
   not "are the tokens still valid" — it doesn't call Garmin, and expiry only
   surfaces on a real course request (503).
 
+## Getting a course onto the device (FIT download)
+
+`Toybox.Navigation` does not exist in Connect IQ, so `Navigation.startNavigation()`
+from plan.md was never implementable. The only device-side mechanism is a FIT
+download: `makeWebRequest` with `:responseType => HTTP_RESPONSE_CONTENT_TYPE_FIT`,
+which the OS parses and stores as device course content under
+`GARMIN/Courses/`, reachable from Navigation > Courses and `PersistedContent`.
+
+Measured in CI (`.github/workflows/fit-spike.yml`, scenarios F/G/H in
+`widget/test/e2e.sh`), edge530 simulator, each scenario starting from an empty
+course store:
+
+| variant | served | landed in `GARMIN/Courses/` |
+|---|---|---|
+| standard records (timestamp+lat+lon+distance) | 218 B | yes, 218 B |
+| lean records (lat+lon only) | 188 B | yes, 188 B |
+| deliberately corrupted body | 218 B | **no** — rejected |
+
+Two conclusions:
+
+- Our generated FIT (`backend/fit.py`) is accepted, and the corrupt control is
+  rejected, so the device genuinely parses rather than accepting any payload.
+- **Lean records are sufficient** — no per-record timestamp or distance. That
+  costs 9.16 B/pt against the ASCII85 point payload's 10.00 B/pt, so moving to
+  FIT makes the wire payload smaller, not larger. Standard records would be
+  17.16 B/pt.
+
+### Traps found
+
+- **HTTP 200 does not mean the FIT was accepted.** A rejected file still
+  reports 200; only the bytes arriving is being reported. Acceptance is
+  observable solely in the course store.
+- **`PersistedContent.getCourses()` can be stale.** In the corrupt-file
+  scenario it returned a course whose file had been deleted from disk. Do not
+  treat it as confirmation that a download succeeded.
+
+`CourseListView.onCourseFitResponse()` currently relies on both of these and so
+reports success for a rejected file. `useFitDownload` stays `false` until that
+is fixed.
+
+### Still unverified
+
+The simulator has no activity to be busy with, so it says nothing about the
+case this project exists for: whether the download works **mid-activity** on a
+physical Edge 530. Also untested on hardware: whether the Courses menu picks up
+a CIQ-written course without a restart, and `PersistedContent.Course.toIntent()`
++ `System.exitTo()` for one-press launch.
+
 ## Deployment requirements
 
 These are real constraints, not asides:

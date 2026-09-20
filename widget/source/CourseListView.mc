@@ -183,9 +183,21 @@ class CourseListView extends WatchUi.View {
     }
 
     // Called by CourseLoader with (code, data, durationMs) after a FIT fetch.
-    // `data` is a PersistedContent.Iterator when the OS accepted the file, but
-    // it is not a reliable handle to *our* course, so the authoritative check
-    // is enumerating PersistedContent.getCourses() and looking for the name.
+    //
+    // KNOWN WRONG — do not enable useFitDownload until this is fixed. The CI
+    // spike established that neither signal used here proves the course was
+    // accepted:
+    //
+    //   * code == 200 means the *bytes arrived*, not that the FIT parsed. In
+    //     spike scenario H a deliberately corrupt file returned 200 and never
+    //     reached the course store.
+    //   * PersistedContent.getCourses() served a stale entry in the same
+    //     scenario: it reported "Morning Trail" while GARMIN/Courses/ was
+    //     empty on disk, so the count below can be a course that is not there.
+    //
+    // Result: this reports "Saved to device" for a rejected file. The spike
+    // asserts on the course store instead, which is the only signal that
+    // tracked reality. Fix before shipping; see NOTES.md.
     function onCourseFitResponse(code as Lang.Number, data as Lang.Object?, durationMs as Lang.Number) as Void {
         _lastDurationMs = durationMs;
         if (code == 200) {
