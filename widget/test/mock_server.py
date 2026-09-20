@@ -9,6 +9,9 @@ Modes:
   many    - 8 courses (two screenfuls of 5 rows each) + payloads
   empty   - 0 courses (triggers "No courses found" error state)
   error   - HTTP 500 on every request (triggers network error state)
+  fit      - like normal, but /api/course/{id}/fit serves a standard FIT course
+  fit-lean - as fit, with lean records (9 B/pt: no per-record timestamp/distance)
+  fit-bad  - as fit, but the FIT body is deliberately corrupted (control case)
 
 --delay SECS
   Add an artificial delay (float, seconds) before responding to /api/courses
@@ -21,11 +24,26 @@ Modes:
 
 import base64
 import json
+import os
 import struct
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
+
+# Import the backend's real FIT encoder rather than reimplementing it: the
+# point of the FIT scenarios is to prove the bytes the backend would actually
+# send are the bytes the device accepts.  In the repo it sits at ../../backend;
+# in the test container widget/ is mounted at /app and backend/ at /backend.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _cand in (os.path.join(_HERE, "..", "..", "backend"), "/backend"):
+    if os.path.isfile(os.path.join(_cand, "fit.py")):
+        sys.path.insert(0, _cand)
+        break
+try:
+    import fit  # noqa: E402
+except ImportError:  # only the fit-* modes need it
+    fit = None
 
 # ── Parse CLI args ──────────────────────────────────────────────────────────
 port = 8765
@@ -80,34 +98,23 @@ COURSES_EXTRA = [
 
 COURSES_MANY = COURSES_NORMAL + COURSES_EXTRA  # 8 total → 2 pages of 5
 
-COURSE_POINTS = {
+# Raw (lat, lon) per course — the single source of truth. The ASCII85 payloads
+# and the FIT bodies are both derived from this, so the two wire formats always
+# describe the same route.
+COURSE_LATLON = {
     # Page 1 courses
-    "111222333": _encode_points([
-        (60.1699, 24.9384), (60.1750, 24.9450), (60.1780, 24.9500),
-    ]),
-    "444555666": _encode_points([
-        (60.1800, 25.0000), (60.1900, 25.0100),
-    ]),
-    "777888999": _encode_points([
-        (60.2000, 25.0200), (60.2100, 25.0300), (60.2200, 25.0400),
-    ]),
-    "101010101": _encode_points([
-        (61.4978, 23.7610), (61.5100, 23.7800), (61.5200, 23.8000),
-    ]),
-    "202020202": _encode_points([
-        (60.4518, 22.2666), (60.4600, 22.2800),
-    ]),
+    "111222333": [(60.1699, 24.9384), (60.1750, 24.9450), (60.1780, 24.9500)],
+    "444555666": [(60.1800, 25.0000), (60.1900, 25.0100)],
+    "777888999": [(60.2000, 25.0200), (60.2100, 25.0300), (60.2200, 25.0400)],
+    "101010101": [(61.4978, 23.7610), (61.5100, 23.7800), (61.5200, 23.8000)],
+    "202020202": [(60.4518, 22.2666), (60.4600, 22.2800)],
     # Page 2 courses
-    "303030303": _encode_points([
-        (60.2052, 24.6559), (60.2100, 24.6700), (60.2200, 24.6900),
-    ]),
-    "404040404": _encode_points([
-        (60.2934, 25.0378), (60.3000, 25.0500),
-    ]),
-    "505050505": _encode_points([
-        (66.5039, 25.7294), (66.5100, 25.7400), (66.5200, 25.7600),
-    ]),
+    "303030303": [(60.2052, 24.6559), (60.2100, 24.6700), (60.2200, 24.6900)],
+    "404040404": [(60.2934, 25.0378), (60.3000, 25.0500)],
+    "505050505": [(66.5039, 25.7294), (66.5100, 25.7400), (66.5200, 25.7600)],
 }
+
+COURSE_POINTS = {cid: _encode_points(pts) for cid, pts in COURSE_LATLON.items()}
 
 
 # ── Request handler ─────────────────────────────────────────────────────────
@@ -132,10 +139,34 @@ class Handler(BaseHTTPRequestHandler):
                 courses = []
             elif mode == "many":
                 courses = COURSES_MANY
-            else:
+            else:  # normal, fit, fit-lean, fit-bad
                 courses = COURSES_NORMAL
             body = json.dumps({"courses": courses}).encode()
             self._respond(200, "application/json", body)
+
+        elif path.startswith("/api/course/") and path.endswith("/fit"):
+            course_id = path.split("/")[-2]
+            pts = COURSE_LATLON.get(course_id)
+            if not pts:
+                self.send_response(404)
+                self.end_headers()
+                return
+            qs = parse_qs(urlparse(self.path).query)
+            name = qs.get("name", [f"Course {course_id}"])[0]
+            blob = fit.encode_course_fit(
+                name, [{"lat": la, "lon": lo} for la, lo in pts],
+                lean=(mode == "fit-lean"),
+            )
+            if mode == "fit-bad":
+                # Corrupt the body while keeping the length: the control case
+                # that proves the device is really parsing, not just accepting
+                # any 200 response.
+                blob = bytearray(blob)
+                for i in range(14, min(len(blob), 40)):
+                    blob[i] ^= 0xFF
+                blob = bytes(blob)
+            print(f"[mock] FIT {course_id} name={name!r} mode={mode} bytes={len(blob)}", flush=True)
+            self._respond(200, "application/vnd.ant.fit", blob)
 
         elif path.startswith("/api/course/"):
             course_id = path.split("/")[-1]

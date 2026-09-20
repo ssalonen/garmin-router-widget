@@ -3,4 +3,8 @@
     <property id="apiKey" type="string">change-me</property>
     <property id="debugMode" type="boolean">false</property>
     <property id="maxCourses" type="number">10</property>
+    <!-- Spike toggle: request the course as a FIT file so the device
+         stores it, instead of the ASCII85 point payload that nothing
+         consumes. Off by default until the device test passes. -->
+    <property id="useFitDownload" type="boolean">false</property>
 </properties>

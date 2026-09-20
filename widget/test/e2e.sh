@@ -114,6 +114,22 @@ monkeyc -f monkey.jungle -d "$DEVICE" \
     -y "$CERT" -l 3
 echo "[e2e] Compiled OK → test-results/build/app.prg"
 
+# FIT spike build: same source, useFitDownload flipped on. Kept as a separate
+# .prg so scenarios A-E keep exercising the legacy ASCII85 path unchanged.
+FIT_PRG=""
+if [ "${SPIKE:-0}" = "1" ]; then
+    sed -i \
+        "s|<property id=\"useFitDownload\" type=\"boolean\">false</property>|<property id=\"useFitDownload\" type=\"boolean\">true</property>|" \
+        "$WORK/resources/settings/properties.xml"
+    grep -q 'useFitDownload" type="boolean">true' "$WORK/resources/settings/properties.xml" \
+        || { echo "[spike] FATAL: useFitDownload patch did not apply"; exit 1; }
+    monkeyc -f monkey.jungle -d "$DEVICE" \
+        -o test-results/build/app-fit.prg \
+        -y "$CERT" -l 3
+    FIT_PRG="test-results/build/app-fit.prg"
+    echo "[spike] Compiled OK → $FIT_PRG (useFitDownload=true)"
+fi
+
 # ── Patch simulator.json: remove behavior from UP/DOWN buttons ───────────────
 # edge530 simulator.json assigns behavior:"nextPage"/"previousPage" to the
 # up/down buttons.  In the widget loop this triggers carousel navigation at the
@@ -487,6 +503,7 @@ start_mock() {
 
 load_app() {
     local label="${1:-}"
+    local prg="${2:-test-results/build/app.prg}"
     if [ -n "$APP_PID" ]; then
         kill "$APP_PID" 2>/dev/null || true
         sleep 1
@@ -496,7 +513,7 @@ load_app() {
     # monkeydo stdout also carries some runtime messages; append to same log.
     # 300 s timeout: each scenario needs ~18-50 s; 30 s was too short and caused
     # monkeydo to drop the simulator connection mid-test, producing false crash triangles.
-    DISPLAY=$DISP timeout 300s monkeydo test-results/build/app.prg "$DEVICE" \
+    DISPLAY=$DISP timeout 300s monkeydo "$prg" "$DEVICE" \
         >>"${RESULTS}/simulator.log" 2>&1 &
     APP_PID=$!
     echo "[e2e] App loaded (PID=$APP_PID) — Monkey C log → ${RESULTS}/simulator.log"
@@ -635,6 +652,62 @@ assert_screenshots_differ() {
     fi
 }
 
+# ── Log assertions (FIT spike) ───────────────────────────────────────────────
+#
+# The FIT path produces no distinctive pixels — the course is handed to the OS,
+# not drawn — so the spike asserts on System.println() output instead. Each
+# load_app writes a "══ load_app LABEL ══" marker, so a scenario's log is
+# everything after that marker.
+
+_scenario_log() {
+    local label="$1"
+    awk -v pat="══ load_app ${label} ══" 'index($0,pat){found=1;next} found' \
+        "${RESULTS}/simulator.log" 2>/dev/null || true
+}
+
+# assert_log_matches LABEL REGEX DESCRIPTION
+assert_log_matches() {
+    local label="$1" pattern="$2" desc="$3"
+    if _scenario_log "$label" | grep -qE "$pattern"; then
+        echo "[assert] PASS '$desc'"
+    else
+        echo "[assert] FAIL '$desc' — no /$pattern/ in scenario $label log"
+        ASSERT_FAILED=true
+    fi
+}
+
+# assert_log_not_matches LABEL REGEX DESCRIPTION
+assert_log_not_matches() {
+    local label="$1" pattern="$2" desc="$3"
+    if _scenario_log "$label" | grep -qE "$pattern"; then
+        echo "[assert] FAIL '$desc' — unexpected /$pattern/ in scenario $label log"
+        ASSERT_FAILED=true
+    else
+        echo "[assert] PASS '$desc'"
+    fi
+}
+
+# Print every FIT/PersistedContent line for a scenario, so a failing run is
+# diagnosable from the CI log alone.
+spike_report() {
+    local label="$1"
+    echo "[spike] ── scenario $label: FIT / PersistedContent lines ──"
+    _scenario_log "$label" | grep -E 'FIT_REQUEST|FIT_RESULT|PERSISTED_' || echo "[spike]   (none)"
+}
+
+# Where did the simulator put downloaded content?
+dump_course_store() {
+    echo "[spike] ── simulator content store ──"
+    for d in /tmp/com.garmin.connectiq /root/.Garmin/ConnectIQ; do
+        [ -d "$d" ] || continue
+        find "$d" \( -iname '*.fit' -o -ipath '*Course*' -o -ipath '*NewFiles*' \) \
+            -printf '%10s  %p\n' 2>/dev/null | head -40
+    done
+    echo "[spike] ── end content store ──"
+}
+
+if [ "${SPIKE_ONLY:-0}" != "1" ]; then
+
 # ════════════════════════════════════════════════════════════════════════════
 # Scenario A — Happy path: navigate to first course (no scroll)
 # ════════════════════════════════════════════════════════════════════════════
@@ -737,6 +810,84 @@ done
 sleep 1
 screenshot "08_multipage_after_downs"
 assert_no_error_triangle "08_multipage_after_downs" "08: no exception after 5 Downs"
+
+fi  # SPIKE_ONLY guard — end of scenarios A-E
+
+# ════════════════════════════════════════════════════════════════════════════
+# FIT SPIKE — scenarios F/G/H
+# ════════════════════════════════════════════════════════════════════════════
+# Question: can a Connect IQ widget put a course on an Edge 530 by downloading
+# a FIT file, so it shows up for navigation? Three variants:
+#
+#   F  standard FIT (17 B/pt)  — does the device accept our generated file?
+#   G  lean FIT     (9 B/pt)   — are per-record timestamp/distance required?
+#   H  corrupt FIT             — CONTROL. If a deliberately broken FIT also
+#                                reports success, the device is not parsing
+#                                anything and F/G prove nothing.
+#
+# H is the scenario that makes the other two meaningful. Read it first.
+if [ "${SPIKE:-0}" = "1" ]; then
+
+echo "[spike] ══════ FIT download spike ══════"
+dump_course_store
+
+# ── Scenario F — standard FIT ───────────────────────────────────────────────
+echo "[e2e] ── Scenario F: FIT download (standard records) ────────────"
+start_mock fit 15
+load_app F "$FIT_PRG"
+activate
+enter_widget
+wait_for_http
+select_course
+sleep 25
+screenshot "09_fit_standard"
+spike_report F
+assert_no_error_triangle "09_fit_standard" "09: no exception on FIT download"
+assert_log_matches F 'FIT_REQUEST' "F: widget issued a FIT request"
+assert_log_matches F 'FIT_RESULT code=200' "F: standard FIT accepted (HTTP 200)"
+assert_log_matches F 'PERSISTED_COURSE name=Morning Trail' "F: course stored under its name"
+dump_course_store
+
+# ── Scenario G — lean FIT (9 B/pt) ──────────────────────────────────────────
+echo "[e2e] ── Scenario G: FIT download (lean records, 9 B/pt) ───────"
+start_mock fit-lean 15
+load_app G "$FIT_PRG"
+activate
+enter_widget
+wait_for_http
+select_course
+sleep 25
+screenshot "10_fit_lean"
+spike_report G
+assert_no_error_triangle "10_fit_lean" "10: no exception on lean FIT download"
+assert_log_matches G 'FIT_RESULT code=200' "G: lean FIT accepted (HTTP 200)"
+assert_log_matches G 'PERSISTED_COURSE name=Morning Trail' "G: lean course stored under its name"
+dump_course_store
+
+# ── Scenario H — corrupt FIT (control) ──────────────────────────────────────
+echo "[e2e] ── Scenario H: corrupt FIT (control) ─────────────────────"
+start_mock fit-bad 15
+load_app H "$FIT_PRG"
+activate
+enter_widget
+wait_for_http
+select_course
+sleep 25
+screenshot "11_fit_corrupt"
+spike_report H
+assert_no_error_triangle "11_fit_corrupt" "11: no exception on corrupt FIT"
+assert_log_not_matches H 'FIT_RESULT code=200' \
+    "H: corrupt FIT rejected — proves the device really parses the body"
+dump_course_store
+
+echo "[spike] ══════ FIT spike complete ══════"
+echo "[spike] Read the three FIT_RESULT codes together:"
+echo "[spike]   F=200 G=200 H!=200  → FIT download works; lean records fine"
+echo "[spike]   F=200 G!=200 H!=200 → works, but records need timestamp+distance"
+echo "[spike]   F!=200              → our FIT is rejected; see the code"
+echo "[spike]   H=200               → INCONCLUSIVE: no parsing is happening"
+
+fi  # SPIKE guard
 
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── All scenarios complete ──────────────────────────────────"

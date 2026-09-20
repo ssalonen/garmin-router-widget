@@ -9,6 +9,9 @@ const STATE_LIST_READY     = 1;
 const STATE_LOADING_COURSE = 2;
 const STATE_NAVIGATING     = 3;
 const STATE_ERROR          = 4;
+// Course FIT downloaded and handed to the OS; it now lives in
+// PersistedContent and the native Navigation > Courses menu.
+const STATE_COURSE_SAVED   = 5;
 
 // Parse the /api/courses JSON response into an array of course dicts.
 // Returns [] on any failure so callers never deal with null.

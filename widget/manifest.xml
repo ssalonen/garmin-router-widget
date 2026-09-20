@@ -13,6 +13,9 @@
         <iq:permissions>
             <iq:uses-permission id="Communications"/>
             <iq:uses-permission id="Positioning"/>
+            <!-- Required for FIT course downloads to be stored as device
+                 course content and read back via PersistedContent. -->
+            <iq:uses-permission id="PersistedContent"/>
         </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>

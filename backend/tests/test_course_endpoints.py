@@ -150,3 +150,47 @@ def test_api_key_rejects_wrong_key(client, monkeypatch):
     monkeypatch.setenv("API_KEY", "s3cret")
     r = client.get("/api/courses", headers={"X-Api-Key": "nope"})
     assert r.status_code == 401
+
+
+# ── FIT course endpoint ──────────────────────────────────────────────────────
+
+def test_course_fit_returns_a_fit_file(client, fake_session):
+    fake_session.points = [
+        {"lat": 60.1699, "lon": 24.9384},
+        {"lat": 60.1750, "lon": 24.9450},
+    ]
+    r = client.get("/api/course/111222333/fit?name=Morning+Trail")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/vnd.ant.fit"
+    assert r.content[8:12] == b".FIT"
+
+
+def test_course_fit_uses_the_supplied_name(client, fake_session):
+    fake_session.points = [{"lat": 60.1, "lon": 24.9}, {"lat": 60.2, "lon": 25.0}]
+    body = client.get("/api/course/1/fit?name=Lakeside+Loop").content
+    assert b"Lakeside Loop\x00" in body
+
+
+def test_course_fit_falls_back_to_the_id_when_unnamed(client, fake_session):
+    fake_session.points = [{"lat": 60.1, "lon": 24.9}]
+    assert b"Course 777\x00" in client.get("/api/course/777/fit").content
+
+
+def test_lean_fit_is_smaller_than_standard(client, fake_session):
+    fake_session.points = [{"lat": 60.0 + i / 1000, "lon": 24.0} for i in range(50)]
+    std = client.get("/api/course/1/fit").content
+    lean = client.get("/api/course/1/fit?lean=1").content
+    assert len(lean) < len(std)
+
+
+def test_course_fit_404s_on_an_empty_course(client, fake_session):
+    fake_session.points = []
+    assert client.get("/api/course/1/fit").status_code == 404
+
+
+def test_course_fit_does_not_shadow_the_ascii85_route(client, fake_session):
+    """/api/course/{id} and /api/course/{id}/fit must stay distinct."""
+    fake_session.points = [{"lat": 60.1, "lon": 24.9}]
+    r = client.get("/api/course/111222333")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")

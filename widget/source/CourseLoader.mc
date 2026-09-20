@@ -72,6 +72,54 @@ class CourseLoader {
         );
     }
 
+    // Request the course as a FIT file.  Unlike the other two calls, the
+    // response body never reaches us: Connect IQ parses the FIT itself and
+    // stores the course as device content, so the callback's `data` is a
+    // PersistedContent.Iterator (or null) rather than something to decode.
+    // The course name is passed through so the OS stores it under a readable
+    // name in Navigation > Courses.
+    //
+    // Calls callback.invoke(responseCode, data, durationMs)
+    function fetchCourseFit(courseId as Lang.String, courseName as Lang.String, callback as Lang.Method) as Void {
+        if (_requestInFlight) {
+            _logger.warn("fetchCourseFit: request already in flight, ignoring", null);
+            return;
+        }
+        _requestInFlight = true;
+        _pendingCallback = callback;
+        _requestStart    = System.getTimer();
+        var url = _baseUrl + "/api/course/" + courseId + "/fit";
+        _logger.info("GET /api/course/" + courseId + "/fit", null);
+        System.println("FIT_REQUEST url=" + url + " name=" + courseName);
+        Communications.makeWebRequest(
+            url,
+            {"name" => courseName},
+            {
+                :method       => Communications.HTTP_REQUEST_METHOD_GET,
+                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_FIT,
+                :headers      => {
+                    "X-Api-Key"    => _headers.get("X-Api-Key"),
+                    "Content-Type" => Communications.REQUEST_CONTENT_TYPE_URL_ENCODED
+                }
+            },
+            method(:_onCourseFitRaw)
+        );
+    }
+
+    function _onCourseFitRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
+        _requestInFlight = false;
+        var ms = System.getTimer() - _requestStart;
+        // Printed unconditionally: the spike reads these lines out of the
+        // simulator log to tell "FIT parsed and stored" from "FIT rejected".
+        System.println("FIT_RESULT code=" + responseCode + " ms=" + ms
+            + " dataNull=" + (data == null));
+        _logger.info("Course FIT response", {"http_status" => responseCode, "duration_ms" => ms});
+        if (_pendingCallback != null) {
+            (_pendingCallback as Lang.Method).invoke(responseCode, data, ms);
+            _pendingCallback = null;
+        }
+    }
+
     function _onCourseListRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
         _requestInFlight = false;
         var ms = System.getTimer() - _requestStart;
