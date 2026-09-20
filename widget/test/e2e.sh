@@ -505,6 +505,31 @@ load_app() {
         >>"${RESULTS}/simulator.log" 2>&1 &
     APP_PID=$!
     echo "[e2e] App loaded (PID=$APP_PID) — Monkey C log → ${RESULTS}/simulator.log"
+
+    # Wait for THIS instance to announce itself before returning.
+    #
+    # Killing monkeydo does not reliably unload the app from the simulator, so
+    # without this a scenario's first click can land on the previous
+    # scenario's app, which is still resident and still in STATE_LIST_READY.
+    # That is exactly what happened to scenario F once: its SELECT fired a
+    # course download three seconds in, using the prior scenario's loaded
+    # list, while its own instance never logged a line.
+    #
+    # The widget prints its base URL at the start of fetchCourseList, so that
+    # line appearing after the boundary marker means the new instance is live.
+    # The course list itself is still in flight (the mock delays it), so the
+    # "click during LOADING" step that follows still does what it says.
+    local waited=0
+    while [ "$waited" -lt 40 ]; do
+        if _scenario_log "${label:-?}" | grep -q "INFO: http"; then
+            echo "[e2e] App ${label:-?} is live after ${waited}s"
+            return
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo "[e2e] WARN: app ${label:-?} never announced itself within ${waited}s —" \
+         "assertions below may be reading a stale instance"
 }
 
 wait_for_http() {
