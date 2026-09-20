@@ -228,7 +228,7 @@ class CourseListView extends WatchUi.View {
                 System.println("PERSISTED_UNSUPPORTED getCourses missing");
                 return -1;
             }
-        } catch (ex) {
+        } catch (ex instanceof Lang.Exception) {
             System.println("PERSISTED_ERROR " + ex.getErrorMessage());
             return -1;
         }
