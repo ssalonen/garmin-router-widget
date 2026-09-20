@@ -3,7 +3,7 @@ X-Api-Key shared secret."""
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import Response
 
 import fit
 import garmin
@@ -33,44 +33,26 @@ def list_courses(
     return {"courses": courses}
 
 
-@router.get("/course/{course_id}", response_class=PlainTextResponse)
-def get_course(
-    course_id: str,
-    _: None = Security(require_api_key),
-    session: garmin.GarminSession = Depends(get_session),
-):
-    try:
-        points = session.get_course_points(course_id)
-    except garmin.GarminAuthError:
-        reset_session()
-        raise HTTPException(status_code=503, detail=REAUTH_DETAIL)
-    except Exception:
-        logger.exception("Garmin course-points fetch failed")
-        reset_session()
-        raise HTTPException(status_code=502, detail="Upstream error from Garmin")
-    return PlainTextResponse(
-        content=garmin.encode_points_ascii85(points),
-        media_type="text/plain; charset=ascii",
-    )
-
-
-@router.get("/course/{course_id}/fit")
+@router.get("/course/{course_id}")
 def get_course_fit(
     course_id: str,
     name: str = Query(default="", max_length=63),
-    lean: bool = Query(default=False),
+    lean: bool = Query(default=True),
     _: None = Security(require_api_key),
     session: garmin.GarminSession = Depends(get_session),
 ):
     """Serve the course as a FIT Course file.
 
-    This is the format the device can actually consume: the widget requests it
-    with `HTTP_RESPONSE_CONTENT_TYPE_FIT`, and Connect IQ parses and stores it
-    as device course content. `name` comes from the widget (it already has it
-    from the list response) and becomes the name shown in Navigation > Courses.
+    This is the only format the device can consume: the widget requests it with
+    `HTTP_RESPONSE_CONTENT_TYPE_FIT`, and Connect IQ parses and stores it as
+    device course content, reachable from Navigation > Courses. `name` comes
+    from the widget (it already has it from the list response) and becomes the
+    name shown in that menu.
 
-    `lean=1` omits per-record timestamp and distance — 9 B/pt instead of 17.
-    Only use it if the device is confirmed to accept it.
+    Records are lean by default — positions only, 9.16 B/pt, verified accepted
+    by the edge530 simulator. `?lean=0` switches to full records (timestamp and
+    distance, 17.16 B/pt) without a widget rebuild, which is the escape hatch
+    if a physical device turns out to be stricter than the simulator.
     """
     try:
         points = session.get_course_points(course_id)

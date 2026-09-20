@@ -1,17 +1,14 @@
 // Pure utility functions — no device API dependencies, fully testable.
 
 using Toybox.Lang;
-using Toybox.Position;
 
 // State constants used across the widget
 const STATE_LOADING_LIST   = 0;
 const STATE_LIST_READY     = 1;
 const STATE_LOADING_COURSE = 2;
-const STATE_NAVIGATING     = 3;
+// Course FIT handed to the OS, which stores it as device course content.
+const STATE_COURSE_SAVED   = 3;
 const STATE_ERROR          = 4;
-// Course FIT downloaded and handed to the OS; it now lives in
-// PersistedContent and the native Navigation > Courses menu.
-const STATE_COURSE_SAVED   = 5;
 
 // Parse the /api/courses JSON response into an array of course dicts.
 // Returns [] on any failure so callers never deal with null.
@@ -37,78 +34,6 @@ function parseCourseList(data as Lang.Object?) as Lang.Array {
             "name"       => name,
             "distanceKm" => itemDict.get("distanceKm")
         });
-    }
-    return result;
-}
-
-// Decode binary course points from /api/course/{id}.
-// Format: pairs of big-endian int32 scaled by 1e7, 8 bytes per point.
-// Relies on Monkey C Number being 32-bit signed: bytes with high bit set
-// produce negative int32 values, which is exactly what we want for
-// southern latitudes and western longitudes.
-
-function int32FromBytesAt(bytes as Lang.ByteArray, offset as Lang.Number) as Lang.Number {
-    var b0 = bytes[offset];
-    var b1 = bytes[offset + 1];
-    var b2 = bytes[offset + 2];
-    var b3 = bytes[offset + 3];
-    return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
-}
-
-function decodeBinaryPoints(bytes as Lang.Object?) as Lang.Array {
-    var result = [];
-    if (bytes == null) { return result; }
-    if (!(bytes instanceof Lang.ByteArray)) { return result; }
-    var ba = bytes as Lang.ByteArray;
-    var n = ba.size();
-    var i = 0;
-    while (i + 8 <= n) {
-        var latInt = int32FromBytesAt(ba, i);
-        var lonInt = int32FromBytesAt(ba, i + 4);
-        result.add(new Position.Location({
-            :latitude  => latInt.toFloat() / 10000000.0,
-            :longitude => lonInt.toFloat() / 10000000.0,
-            :format    => :degrees
-        }));
-        i += 8;
-    }
-    return result;
-}
-
-// Decode an ASCII85-encoded string (Python/btoa a85encode variant — no <~ ~>
-// markers, no 'z' shorthand) into a ByteArray.
-// Uses Lang.Long accumulation to avoid int32 overflow: maximum encoded group
-// value is 84*85^4+...≈4.3B which exceeds the 2^31 signed int32 range.
-// Partial final groups (len % 5 != 0) are handled by padding with 84 ('u'),
-// matching Python's a85decode behaviour.  Our wire data is always 8-byte
-// aligned (2 complete groups of 4 bytes → 10 chars), so partial groups are a
-// defensive code path only.
-function decodeAscii85(encoded as Lang.String) as Lang.ByteArray {
-    var chars = encoded.toCharArray();
-    var n = chars.size();
-    var complete = n / 5;
-    var partial  = n % 5;
-    var size = complete * 4 + (partial >= 2 ? partial - 1 : 0);
-    var result = new [size]b;
-    var pos = 0;
-    var i = 0;
-    while (i < n) {
-        var groupLen = n - i;
-        if (groupLen > 5) { groupLen = 5; }
-        if (groupLen < 2) { break; }
-        var v = 0l;
-        for (var k = 0; k < groupLen; k++) {
-            v = v * 85l + (chars[i + k].toNumber() - 33).toLong();
-        }
-        for (var k = groupLen; k < 5; k++) {
-            v = v * 85l + 84l;
-        }
-        var outCount = groupLen - 1;
-        if (outCount > 0) { result[pos] = ((v >> 24) & 255l).toNumber(); pos++; }
-        if (outCount > 1) { result[pos] = ((v >> 16) & 255l).toNumber(); pos++; }
-        if (outCount > 2) { result[pos] = ((v >>  8) & 255l).toNumber(); pos++; }
-        if (outCount > 3) { result[pos] = (v         & 255l).toNumber(); pos++; }
-        i += groupLen;
     }
     return result;
 }

@@ -8,11 +8,14 @@
 #   4. Clicks device frame buttons, captures screenshots, and asserts pixel colours
 #
 # Scenarios:
-#   A  normal / navigate FIRST course  (Enter without Down)
-#   B  normal / navigate SECOND course (Down → Enter)
-#   C  error  / HTTP 500 → error state
-#   D  empty  / empty list → "No courses found"
-#   E  many   / 8 courses (2 pages of 5) → scroll to page 2
+#   A  normal  / download FIRST course  (Enter without Down)
+#   B  normal  / download SECOND course (Down → Enter)
+#   C  error   / HTTP 500 → error state
+#   D  empty   / empty list → "No courses found"
+#   E  many    / 8 courses (2 pages of 5) → scroll to page 2
+#   F  full    / FIT with timestamp+distance records (the ?lean=0 fallback)
+#   G  corrupt / damaged FIT must NOT be stored — the control that makes the
+#                positive results above mean something
 #
 # Usage (inside container, called by CI):
 #   e2e.sh [DEVICE] [CERT_PATH]
@@ -114,21 +117,6 @@ monkeyc -f monkey.jungle -d "$DEVICE" \
     -y "$CERT" -l 3
 echo "[e2e] Compiled OK → test-results/build/app.prg"
 
-# FIT spike build: same source, useFitDownload flipped on. Kept as a separate
-# .prg so scenarios A-E keep exercising the legacy ASCII85 path unchanged.
-FIT_PRG=""
-if [ "${SPIKE:-0}" = "1" ]; then
-    sed -i \
-        "s|<property id=\"useFitDownload\" type=\"boolean\">false</property>|<property id=\"useFitDownload\" type=\"boolean\">true</property>|" \
-        "$WORK/resources/settings/properties.xml"
-    grep -q 'useFitDownload" type="boolean">true' "$WORK/resources/settings/properties.xml" \
-        || { echo "[spike] FATAL: useFitDownload patch did not apply"; exit 1; }
-    monkeyc -f monkey.jungle -d "$DEVICE" \
-        -o test-results/build/app-fit.prg \
-        -y "$CERT" -l 3
-    FIT_PRG="test-results/build/app-fit.prg"
-    echo "[spike] Compiled OK → $FIT_PRG (useFitDownload=true)"
-fi
 
 # ── Patch simulator.json: remove behavior from UP/DOWN buttons ───────────────
 # edge530 simulator.json assigns behavior:"nextPage"/"previousPage" to the
@@ -503,7 +491,7 @@ start_mock() {
 
 load_app() {
     local label="${1:-}"
-    local prg="${2:-test-results/build/app.prg}"
+    local prg="test-results/build/app.prg"
     if [ -n "$APP_PID" ]; then
         kill "$APP_PID" 2>/dev/null || true
         sleep 1
@@ -652,10 +640,10 @@ assert_screenshots_differ() {
     fi
 }
 
-# ── Log assertions (FIT spike) ───────────────────────────────────────────────
+# ── Log assertions ───────────────────────────────────────────────────────────
 #
 # The FIT path produces no distinctive pixels — the course is handed to the OS,
-# not drawn — so the spike asserts on System.println() output instead. Each
+# not drawn — so these assert on System.println() output instead. Each
 # load_app writes a "══ load_app LABEL ══" marker, so a scenario's log is
 # everything after that marker.
 
@@ -689,23 +677,23 @@ assert_log_not_matches() {
 
 # Print every FIT/PersistedContent line for a scenario, so a failing run is
 # diagnosable from the CI log alone.
-spike_report() {
+fit_report() {
     local label="$1"
-    echo "[spike] ── scenario $label: FIT / PersistedContent lines ──"
-    _scenario_log "$label" | grep -E 'FIT_REQUEST|FIT_RESULT|PERSISTED_' || echo "[spike]   (none)"
+    echo "[fit] ── scenario $label: FIT / PersistedContent lines ──"
+    _scenario_log "$label" | grep -E 'FIT_REQUEST|FIT_RESULT|PERSISTED_' || echo "[fit]   (none)"
 }
 
 # Where the simulator stores downloaded course content.
 COURSE_STORE="/tmp/com.garmin.connectiq/GARMIN/Courses"
 
 dump_course_store() {
-    echo "[spike] ── simulator content store ──"
+    echo "[fit] ── simulator content store ──"
     for d in /tmp/com.garmin.connectiq /root/.Garmin/ConnectIQ; do
         [ -d "$d" ] || continue
         find "$d" \( -iname '*.fit' -o -ipath '*Course*' -o -ipath '*NewFiles*' \) \
             -printf '%10s  %p\n' 2>/dev/null | head -40
     done
-    echo "[spike] ── end content store ──"
+    echo "[fit] ── end content store ──"
 }
 
 # Empty the course store so each scenario starts from a known state.
@@ -717,7 +705,7 @@ dump_course_store() {
 reset_course_store() {
     mkdir -p "$COURSE_STORE"
     rm -f "$COURSE_STORE"/*.fit 2>/dev/null || true
-    echo "[spike] course store reset → $(_stored_fit_count) file(s)"
+    echo "[fit] course store reset → $(_stored_fit_count) file(s)"
 }
 
 _stored_fit_count() {
@@ -754,16 +742,15 @@ assert_course_not_stored() {
     fi
 }
 
-if [ "${SPIKE_ONLY:-0}" != "1" ]; then
-
 # ════════════════════════════════════════════════════════════════════════════
-# Scenario A — Happy path: navigate to first course (no scroll)
+# Scenario A — Happy path: download first course (no scroll)
 # ════════════════════════════════════════════════════════════════════════════
 # Mock delay (15 s) ensures the HTTP response hasn't arrived yet when
 # enter_widget fires its SELECT click, so KEY_ENTER is a no-op at that point
 # (selectCourse() guards on STATE_LIST_READY).  After wait_for_http the list
-# is loaded and the second SELECT click (select_course) triggers navigation.
-echo "[e2e] ── Scenario A: navigate first course ───────────────────────"
+# is loaded and the second SELECT click (select_course) triggers the download.
+echo "[e2e] ── Scenario A: download first course ───────────────────────"
+reset_course_store
 start_mock normal 15
 load_app A
 activate
@@ -775,22 +762,25 @@ assert_no_error_triangle "01_course_list" "01: no exception"
 assert_row_selected "01_course_list" 0 1 "row0 is highlighted on initial load"
 
 select_course   # second SELECT click → KEY_ENTER → selectCourse()
-sleep 20
-screenshot "02_navigating_first"
-assert_no_error_triangle "02_navigating_first" "02: no exception"
+sleep 25
+screenshot "02_downloaded_first"
+assert_no_error_triangle "02_downloaded_first" "02: no exception"
 # The resize from 280x375→246x322 darkens the pure #00FF00 text to ~#00B700 (28%
 # channel shift), which is just outside the 25% fuzz window.  Observed count is
 # ~442 px.  Threshold of 200 gives headroom while staying above any chrome noise.
-assert_has_color "02_navigating_first" 20 62 180 92 "#00FF00" "navigating state shows green text" 200
+assert_has_color "02_downloaded_first" 20 58 180 90 "#00FF00" "download screen shows green text" 200
+assert_log_matches A 'FIT_REQUEST' "A: widget requested the course as FIT"
+assert_course_stored "A: course parsed by the OS and stored as device content"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Scenario B — Scroll attempt + navigate
+# Scenario B — Scroll attempt + download
 # Note: physical simulator DOWN button clicks do not generate scroll events in
 # the simulator (behavior removed by PYPATCH to prevent carousel crash).
 # The DOWN clicks here verify no-crash behaviour; actual row selection is not
 # asserted since the simulator cannot scroll.
 # ════════════════════════════════════════════════════════════════════════════
-echo "[e2e] ── Scenario B: scroll attempt, navigate ───────────────────"
+echo "[e2e] ── Scenario B: scroll attempt, download ───────────────────"
+reset_course_store
 start_mock normal 15
 load_app B
 activate
@@ -803,10 +793,11 @@ screenshot "03_course_list_after_down"
 assert_no_error_triangle "03_course_list_after_down" "03: no exception after Down"
 
 select_course
-sleep 20
-screenshot "04_navigating"
-assert_no_error_triangle "04_navigating" "04: no exception"
-assert_has_color "04_navigating" 20 62 180 92 "#00FF00" "navigating state shows green text" 200
+sleep 25
+screenshot "04_downloaded"
+assert_no_error_triangle "04_downloaded" "04: no exception"
+assert_has_color "04_downloaded" 20 58 180 90 "#00FF00" "download screen shows green text" 200
+assert_course_stored "B: course stored after scroll + select"
 
 # ════════════════════════════════════════════════════════════════════════════
 # Scenario C — Server error (HTTP 500)
@@ -859,88 +850,49 @@ sleep 1
 screenshot "08_multipage_after_downs"
 assert_no_error_triangle "08_multipage_after_downs" "08: no exception after 5 Downs"
 
-fi  # SPIKE_ONLY guard — end of scenarios A-E
-
 # ════════════════════════════════════════════════════════════════════════════
-# FIT SPIKE — scenarios F/G/H
+# FIT record formats — scenarios F/G
 # ════════════════════════════════════════════════════════════════════════════
-# Question: can a Connect IQ widget put a course on an Edge 530 by downloading
-# a FIT file, so it shows up for navigation? Three variants:
+# A and B already cover the default (lean, 9.16 B/pt). These two cover the
+# fallback format and, crucially, the control.
 #
-#   F  standard FIT (17 B/pt)  — does the device accept our generated file?
-#   G  lean FIT     (9 B/pt)   — are per-record timestamp/distance required?
-#   H  corrupt FIT             — CONTROL. If a deliberately broken FIT also
-#                                reports success, the device is not parsing
-#                                anything and F/G prove nothing.
-#
-# H is the scenario that makes the other two meaningful. Read it first.
-if [ "${SPIKE:-0}" = "1" ]; then
+# Read G first. If a deliberately corrupt FIT is stored, the device is not
+# validating anything and every "stored" result above is worthless. Note that
+# HTTP 200 cannot tell you this — a rejected FIT reports 200 as well, because
+# the code describes the transfer, not the parse. Only the course store does.
 
-echo "[spike] ══════ FIT download spike ══════"
-dump_course_store
-
-# ── Scenario F — standard FIT ───────────────────────────────────────────────
-echo "[e2e] ── Scenario F: FIT download (standard records) ────────────"
+# ── Scenario F — full records (the ?lean=0 fallback) ────────────────────────
+echo "[e2e] ── Scenario F: FIT with full records (17 B/pt) ─────────────"
 reset_course_store
-start_mock fit 15
-load_app F "$FIT_PRG"
+start_mock full 15
+load_app F
 activate
 enter_widget
 wait_for_http
 select_course
 sleep 25
-screenshot "09_fit_standard"
-spike_report F
-assert_no_error_triangle "09_fit_standard" "09: no exception on FIT download"
-assert_log_matches F 'FIT_REQUEST' "F: widget issued a FIT request"
-assert_log_matches F 'FIT_RESULT code=200' "F: standard FIT transferred (HTTP 200)"
-assert_course_stored "F: standard FIT parsed and stored as device course content"
-assert_log_matches F 'PERSISTED_COURSE name=Morning Trail' "F: course readable via PersistedContent"
+screenshot "09_fit_full_records"
+fit_report F
+assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
+assert_log_matches F 'FIT_RESULT code=200' "F: full-record FIT transferred (HTTP 200)"
+assert_course_stored "F: full-record FIT stored — the ?lean=0 fallback works"
 dump_course_store
 
-# ── Scenario G — lean FIT (9 B/pt) ──────────────────────────────────────────
-echo "[e2e] ── Scenario G: FIT download (lean records, 9 B/pt) ───────"
+# ── Scenario G — corrupt FIT (CONTROL) ──────────────────────────────────────
+echo "[e2e] ── Scenario G: corrupt FIT (control) ──────────────────────"
 reset_course_store
-start_mock fit-lean 15
-load_app G "$FIT_PRG"
+start_mock corrupt 15
+load_app G
 activate
 enter_widget
 wait_for_http
 select_course
 sleep 25
-screenshot "10_fit_lean"
-spike_report G
-assert_no_error_triangle "10_fit_lean" "10: no exception on lean FIT download"
-assert_log_matches G 'FIT_RESULT code=200' "G: lean FIT transferred (HTTP 200)"
-assert_course_stored "G: lean FIT (9 B/pt) parsed and stored — no per-record timestamp needed"
+screenshot "10_fit_corrupt"
+fit_report G
+assert_no_error_triangle "10_fit_corrupt" "10: no exception on corrupt FIT"
+assert_course_not_stored "G: corrupt FIT rejected — proves the device parses the body"
 dump_course_store
-
-# ── Scenario H — corrupt FIT (control) ──────────────────────────────────────
-echo "[e2e] ── Scenario H: corrupt FIT (control) ─────────────────────"
-reset_course_store
-start_mock fit-bad 15
-load_app H "$FIT_PRG"
-activate
-enter_widget
-wait_for_http
-select_course
-sleep 25
-screenshot "11_fit_corrupt"
-spike_report H
-assert_no_error_triangle "11_fit_corrupt" "11: no exception on corrupt FIT"
-assert_course_not_stored "H: corrupt FIT rejected — proves the device really parses the body"
-dump_course_store
-
-echo "[spike] ══════ FIT spike complete ══════"
-echo "[spike] Read the three course-store outcomes together."
-echo "[spike] (HTTP 200 only means the bytes arrived — a rejected FIT also"
-echo "[spike]  reports 200. Whether the file LANDS is the real verdict.)"
-echo "[spike]   F stored, G stored, H empty  → works; lean 9 B/pt records fine"
-echo "[spike]   F stored, G empty, H empty   → works, but records need timestamp+distance"
-echo "[spike]   F empty                      → our FIT is rejected outright"
-echo "[spike]   H stored                     → INCONCLUSIVE: nothing is being validated"
-
-fi  # SPIKE guard
 
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── All scenarios complete ──────────────────────────────────"
@@ -957,7 +909,7 @@ fi
 echo "[e2e] ── end simulator log ─────────────────────────────────────"
 
 if [ "$ASSERT_FAILED" = "true" ]; then
-    echo "[e2e] FAIL: One or more pixel assertions failed — see above for details"
+    echo "[e2e] FAIL: One or more assertions failed — see above for details"
     exit 1
 fi
-echo "[e2e] PASS: All pixel assertions passed"
+echo "[e2e] PASS: All assertions passed"

@@ -5,26 +5,16 @@ faked, so the file read, session caching, and response encoding are all real.
 State (token file, cached session, setup-service) lives in deps; these tests
 patch it there and drive the real app.
 """
-import base64
-import struct
 from unittest.mock import MagicMock
+
+import struct
 
 from fastapi.testclient import TestClient
 
+import fit
 from garmin import GarminSession
 
 SETUP_TOKEN = "test-setup-token"
-
-
-def _decode_ascii85_points(text: str) -> list[dict]:
-    data = base64.a85decode(text, adobe=False)
-    return [
-        {
-            "lat": struct.unpack(">i", data[i:i+4])[0] / 1e7,
-            "lon": struct.unpack(">i", data[i+4:i+8])[0] / 1e7,
-        }
-        for i in range(0, len(data) - 7, 8)
-    ]
 
 
 def test_integration_token_file_to_courses(tmp_path, monkeypatch):
@@ -76,7 +66,7 @@ def test_integration_pagination_offset_forwarded_to_garmin(tmp_path, monkeypatch
     deps.reset_session()
 
 
-def test_integration_course_points_ascii85(tmp_path, monkeypatch):
+def test_integration_course_served_as_fit(tmp_path, monkeypatch):
     import deps
     import main
     token_file = tmp_path / "tokens.blob"
@@ -90,10 +80,14 @@ def test_integration_course_points_ascii85(tmp_path, monkeypatch):
     ]}
     monkeypatch.setattr("garmin.session_from_tokens", lambda blob: GarminSession(fake_client))
 
-    r = TestClient(main.app).get("/api/course/111222333")
+    r = TestClient(main.app).get("/api/course/111222333?name=Morning+Trail")
     assert r.status_code == 200
-    decoded = _decode_ascii85_points(r.text)
-    assert abs(decoded[0]["lat"] - 60.1699) < 1e-6
+    assert r.headers["content-type"] == "application/vnd.ant.fit"
+    body = r.content
+    assert body[8:12] == b".FIT"
+    assert b"Morning Trail\x00" in body
+    # The point survived the whole path: Garmin JSON -> session -> encoder.
+    assert struct.pack("<i", fit.semicircles(60.1699)) in body
     deps.reset_session()
 
 

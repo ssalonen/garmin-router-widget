@@ -140,12 +140,12 @@ def encode_course_fit(
     used as the course start time; records get one-second increments so the
     timestamps are monotonic, which the FIT spec requires for record messages.
 
-    `lean=True` drops `timestamp` and `distance` from the record definition,
-    leaving only the two positions: 9 bytes per point instead of 17. Whether a
-    device accepts that is exactly what the CI spike measures — the FIT spec
-    lists record.timestamp for course files, but does not obviously require it,
-    and 9 B/pt puts the wire cost back level with the ASCII85 format this
-    replaces. Do not switch this on by default without a passing device test.
+    `lean=True` (the default used by the course endpoint) drops `timestamp` and
+    `distance` from the record definition, leaving only the two positions: 9.16
+    bytes per point instead of 17.16. The FIT spec lists record.timestamp for
+    course files but does not require it, and the e2e suite confirms the
+    edge530 simulator stores lean courses. `lean=False` is the fallback if a
+    physical device turns out to be stricter.
 
     Raises ValueError on an empty point list — a course with no records is not
     a valid course file and the device would reject it.

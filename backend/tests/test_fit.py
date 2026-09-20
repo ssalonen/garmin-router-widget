@@ -10,7 +10,6 @@ import struct
 import pytest
 
 import fit
-import garmin
 
 POINTS = [
     {"lat": 60.1699, "lon": 24.9384},
@@ -171,25 +170,22 @@ def test_unicode_name_round_trips():
     assert parsed[31][0][5].rstrip(b"\x00").decode() == "Pyhätunturi"
 
 
-# ── Payload size, vs the ASCII85 format it replaces ─────────────────────────
+# ── Payload size ────────────────────────────────────────────────────────────
 
-def test_payload_size_is_competitive_with_ascii85(capsys):
+# What the previous wire format cost per point: 8 packed bytes, expanded to 10
+# characters for text transport. Kept as the yardstick FIT has to beat, since
+# not regressing the payload was the condition for switching to it.
+LEGACY_BYTES_PER_POINT = 10.0
+
+
+def test_standard_records_stay_within_budget(capsys):
     """Records the real wire cost. Printed with -s so CI logs carry the number."""
     pts = [{"lat": 60.0 + i * 1e-4, "lon": 24.0 + i * 1e-4} for i in range(1000)]
-    fit_bytes = len(fit.encode_course_fit("Benchmark", pts))
-    a85_bytes = len(garmin.encode_points_ascii85(pts))
-
-    per_point_fit = fit_bytes / len(pts)
-    per_point_a85 = a85_bytes / len(pts)
-    print(
-        f"\n[payload] {len(pts)} points: "
-        f"FIT {fit_bytes} B ({per_point_fit:.2f} B/pt) vs "
-        f"ASCII85 {a85_bytes} B ({per_point_a85:.2f} B/pt) — "
-        f"ratio {fit_bytes / a85_bytes:.2f}x"
-    )
+    per_point = len(fit.encode_course_fit("Benchmark", pts)) / len(pts)
+    print(f"\n[payload] standard records: {per_point:.2f} B/pt")
     # 17 B/pt = 1-byte record header + timestamp + lat + lon + distance.
     # Guards against accidentally adding fat fields to the record definition.
-    assert per_point_fit < 18
+    assert per_point < 18
 
 
 # ── Lean variant ────────────────────────────────────────────────────────────
@@ -209,15 +205,14 @@ def test_lean_still_emits_file_id_course_and_lap():
     assert set(parsed) == {0, 31, 19, 20}
 
 
-def test_lean_costs_nine_bytes_per_point(capsys):
+def test_lean_beats_the_format_it_replaced(capsys):
+    """The condition for switching to FIT: lean records must cost less than
+    the point payload they replaced."""
     pts = [{"lat": 60.0 + i * 1e-4, "lon": 24.0 + i * 1e-4} for i in range(1000)]
-    std = len(fit.encode_course_fit("Benchmark", pts))
-    lean = len(fit.encode_course_fit("Benchmark", pts, lean=True))
-    a85 = len(garmin.encode_points_ascii85(pts))
+    std = len(fit.encode_course_fit("Benchmark", pts)) / len(pts)
+    lean = len(fit.encode_course_fit("Benchmark", pts, lean=True)) / len(pts)
     print(
-        f"\n[payload] {len(pts)} points → "
-        f"standard FIT {std} B ({std / len(pts):.2f} B/pt), "
-        f"lean FIT {lean} B ({lean / len(pts):.2f} B/pt), "
-        f"ASCII85 {a85} B ({a85 / len(pts):.2f} B/pt)"
+        f"\n[payload] standard {std:.2f} B/pt, lean {lean:.2f} B/pt, "
+        f"previous format {LEGACY_BYTES_PER_POINT:.2f} B/pt"
     )
-    assert lean / len(pts) < 10, "lean records should beat the ASCII85 wire cost"
+    assert lean < LEGACY_BYTES_PER_POINT

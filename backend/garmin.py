@@ -4,16 +4,15 @@
     place that drives garminconnect's SSO login flow. Returns opaque token
     blobs so the rest of the app never touches credentials.
   - GarminSession: course reads against an already-authenticated client.
-  - Pure encoders: the wire format for the widget.
+
+The wire format lives in fit.py: the widget consumes a FIT Course file, which
+is the only thing Connect IQ can turn into device course content.
 
 `garminconnect` performs the real Garmin SSO OAuth2 token exchange under the
 hood, trying a chain of login strategies (mobile/iOS, SSO embed widget, portal
 web) until one succeeds. `return_on_mfa` surfaces the phone-delivered MFA step
 so the web login flow can complete it interactively.
 """
-import base64
-import struct
-
 from garminconnect import Garmin, GarminConnectAuthenticationError
 
 
@@ -120,26 +119,3 @@ class GarminSession:
             {"lat": pt["latitude"], "lon": pt["longitude"]}
             for pt in response.get("geoPoints", [])
         ]
-
-
-def encode_points_binary(points: list[dict]) -> bytes:
-    """Pack lat/lon pairs as big-endian int32 scaled by 1e7.
-
-    8 bytes per point. Precision: 1e-7 degrees ≈ 11 mm — sufficient for
-    navigation. int32 covers ±214 degrees, so all valid lat/lon fit.
-    """
-    return struct.pack(f">{2 * len(points)}i", *[
-        v for p in points
-        for v in (round(p["lat"] * 1e7), round(p["lon"] * 1e7))
-    ])
-
-
-def encode_points_ascii85(points: list[dict]) -> str:
-    """ASCII85-encode packed course points for text/plain transport.
-
-    25% overhead vs raw binary (vs 33% for base64). Our 8-byte-per-point
-    binary data is always 4-byte aligned, so no partial groups or padding
-    occur. Wire format: base64.a85encode(binary, adobe=False) — no <~ ~>
-    markers, pure ASCII chars 33-117.
-    """
-    return base64.a85encode(encode_points_binary(points), adobe=False).decode("ascii")

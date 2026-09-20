@@ -49,32 +49,9 @@ class CourseLoader {
         );
     }
 
-    // Calls callback.invoke(responseCode, data, durationMs)
-    function fetchCoursePoints(courseId as Lang.String, callback as Lang.Method) as Void {
-        if (_requestInFlight) {
-            _logger.warn("fetchCoursePoints: request already in flight, ignoring", null);
-            return;
-        }
-        _requestInFlight = true;
-        _pendingCallback = callback;
-        _requestStart    = System.getTimer();
-        var url = _baseUrl + "/api/course/" + courseId;
-        _logger.info("GET /api/course/" + courseId, null);
-        Communications.makeWebRequest(
-            url,
-            null,
-            {
-                :method       => Communications.HTTP_REQUEST_METHOD_GET,
-                :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_TEXT_PLAIN,
-                :headers      => _headers
-            },
-            method(:_onCoursePointsRaw)
-        );
-    }
-
-    // Request the course as a FIT file.  Unlike the other two calls, the
-    // response body never reaches us: Connect IQ parses the FIT itself and
-    // stores the course as device content, so the callback's `data` is a
+    // Request the course as a FIT file.  Unlike the course list, the response
+    // body never reaches us: Connect IQ parses the FIT itself and stores the
+    // course as device content, so the callback's `data` is a
     // PersistedContent.Iterator (or null) rather than something to decode.
     // The course name is passed through so the OS stores it under a readable
     // name in Navigation > Courses.
@@ -88,8 +65,8 @@ class CourseLoader {
         _requestInFlight = true;
         _pendingCallback = callback;
         _requestStart    = System.getTimer();
-        var url = _baseUrl + "/api/course/" + courseId + "/fit";
-        _logger.info("GET /api/course/" + courseId + "/fit", null);
+        var url = _baseUrl + "/api/course/" + courseId;
+        _logger.info("GET /api/course/" + courseId, null);
         System.println("FIT_REQUEST url=" + url + " name=" + courseName);
         Communications.makeWebRequest(
             url,
@@ -109,8 +86,9 @@ class CourseLoader {
     function _onCourseFitRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
         _requestInFlight = false;
         var ms = System.getTimer() - _requestStart;
-        // Printed unconditionally: the spike reads these lines out of the
-        // simulator log to tell "FIT parsed and stored" from "FIT rejected".
+        // Printed unconditionally: the e2e tests read these out of the
+        // simulator log. Note the code alone cannot tell accepted from
+        // rejected — see onCourseFitResponse in CourseListView.mc.
         System.println("FIT_RESULT code=" + responseCode + " ms=" + ms
             + " dataNull=" + (data == null));
         _logger.info("Course FIT response", {"http_status" => responseCode, "duration_ms" => ms});
@@ -130,13 +108,4 @@ class CourseLoader {
         }
     }
 
-    function _onCoursePointsRaw(responseCode as Lang.Number, data as Lang.Dictionary or Lang.String or PersistedContent.Iterator or Null) as Void {
-        _requestInFlight = false;
-        var ms = System.getTimer() - _requestStart;
-        _logger.info("Course points response", {"http_status" => responseCode, "duration_ms" => ms});
-        if (_pendingCallback != null) {
-            (_pendingCallback as Lang.Method).invoke(responseCode, data, ms);
-            _pendingCallback = null;
-        }
-    }
 }

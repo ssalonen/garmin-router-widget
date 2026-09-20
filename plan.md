@@ -94,10 +94,11 @@ Trailmap ──(sync)──► Garmin Connect
                      Connect IQ Widget
                      • Shows course list by name
                      • User picks one
-                     • Calls Navigation.startNavigation()
+                     • Requests it as FIT; the OS parses and
+                       stores it as device course content
                            │
                            ▼
-                     Garmin OS navigation engine
+                     Navigation > Courses (native menu)
 ```
 
 - **Pros:** All interaction stays on the device; clean UX; no phone interaction needed
@@ -122,7 +123,7 @@ Option 1 is recommended because it gives the cleaner device-side UX and avoids b
 | `makeWebRequest()` does not carry Garmin auth cookies | Requests are direct HTTPS; Garmin session is not passed automatically |
 | OAuth consumer secret cannot be in device code | Must live on the backend |
 | `makeWebRequest()` works over BLE phone proxy | Confirmed; occasional `BLE_QUEUE_FULL` at high volume — keep JSON payloads small |
-| `Navigation.startNavigation()` available in API 3.3 | Confirmed; whether navigation persists after widget exits needs physical device test |
+| ~~`Navigation.startNavigation()` available in API 3.3~~ | **Wrong — `Toybox.Navigation` does not exist in Connect IQ at any version.** Superseded by a FIT download (`HTTP_RESPONSE_CONTENT_TYPE_FIT`), which stores the course as device content. See NOTES.md. |
 | 5 physical buttons | Up, Down, Start/Enter, Lap, Back — sufficient for list navigation |
 
 ---
@@ -158,10 +159,10 @@ Option 1 is recommended because it gives the cleaner device-side UX and avoids b
 
 - On Start press with a course highlighted: call `GET /course/{id}`
 - Show loading indicator
-- On response: build `[Position.Location]` array from points
-- Call `Navigation.startNavigation(points, {})`
-- Show "Navigating: [name]" confirmation
-- User presses Back to exit widget and start their activity
+- On response: hand the body to the OS as a FIT course (the widget never
+  decodes coordinates itself — `Navigation.startNavigation()` does not exist)
+- Show "Downloaded: [name]" confirmation
+- User presses Back, picks the course under Navigation > Courses, and rides
 
 ### Step 5 — Key test: navigation persistence
 
@@ -184,7 +185,7 @@ If yes: the widget is complete. If no: the course needs to be loaded in a differ
 
 | Question | Impact | How to resolve |
 |---|---|---|
-| Does `Navigation.startNavigation()` navigation persist after widget closes and activity starts? | **Critical** — determines if the whole approach works | Test on physical device (Step 5) |
+| ~~Does `Navigation.startNavigation()` persist?~~ Resolved: no such API. Does a FIT download store a course **mid-activity** on a physical 530? | **Critical** — determines if the whole approach works | Test on physical device; the simulator cannot answer it |
 | How long does Garmin developer program approval take? | High — blocks OAuth credentials | Apply at once; use Garmin's unofficial/scraper API for early development if needed |
 | Does GRouteLoaderIQ persist courses (vs navigate-now only)? | Medium — informs Phase 2 design | Contact dpawlyk on Garmin forums |
 | Can Trailmap routes be fetched directly by URL without auth? | Low — would simplify backend by skipping Garmin Connect | Check Trailmap GPX export URL format |
@@ -201,7 +202,7 @@ garmin-router-widget/
 │   ├── source/
 │   │   ├── App.mc            ← entry point
 │   │   ├── CourseListView.mc ← scrollable list UI
-│   │   └── CourseLoader.mc   ← makeWebRequest + Navigation.startNavigation
+│   │   └── CourseLoader.mc   ← makeWebRequest (JSON list + FIT course)
 │   └── resources/
 │       └── layouts/
 │           └── layout.xml
