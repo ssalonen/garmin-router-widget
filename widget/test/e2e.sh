@@ -532,9 +532,48 @@ load_app() {
          "assertions below may be reading a stale instance"
 }
 
-wait_for_http() {
-    # Allow time for: app init + Communications.makeWebRequest + server response + onUpdate
-    sleep 15
+# Poll this scenario's log for a line matching REGEX. Returns 0 on match.
+#
+# Fixed sleeps made scenario outcomes depend on how long the runner happened
+# to take, which is how scenario E once screenshotted the wrong screen: the
+# SELECT that is supposed to be a no-op during LOADING got processed after the
+# course list landed, and fired a download instead.
+_await_log() {
+    local label="$1" pattern="$2" timeout="${3:-90}" what="${4:-$2}"
+    local waited=0
+    while [ "$waited" -lt "$timeout" ]; do
+        if _scenario_log "$label" | grep -qE "$pattern"; then
+            echo "[e2e] $label: $what after ${waited}s"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo "[e2e] WARN: $label: timed out after ${timeout}s waiting for $what"
+    return 1
+}
+
+# Block until the course list request has settled, however it settled.
+wait_for_list() {
+    local label="$1"
+    _await_log "$label" 'Courses loaded|Empty course list|Course list failed' \
+        90 "course list settled"
+    # The enter_widget SELECT is meant to be swallowed by the STATE_LIST_READY
+    # guard. If a download went out before any scenario asked for one, that
+    # click raced the response — say so here rather than leaving a later
+    # assertion to fail for a reason that looks unrelated.
+    if _scenario_log "$label" | grep -q 'FIT_REQUEST'; then
+        echo "[e2e] WARN: $label: a download fired during list load —" \
+             "the enter_widget click raced the response"
+    fi
+    sleep 2   # let onUpdate repaint before any screenshot
+}
+
+# Block until the FIT response has been handled.
+wait_for_download() {
+    local label="$1"
+    _await_log "$label" 'FIT_RESULT code=' 90 "FIT response"
+    sleep 3   # repaint
 }
 
 # ── Pixel-level screenshot assertions ────────────────────────────────────────
@@ -772,22 +811,24 @@ assert_course_not_stored() {
 # ════════════════════════════════════════════════════════════════════════════
 # Mock delay (15 s) ensures the HTTP response hasn't arrived yet when
 # enter_widget fires its SELECT click, so KEY_ENTER is a no-op at that point
-# (selectCourse() guards on STATE_LIST_READY).  After wait_for_http the list
-# is loaded and the second SELECT click (select_course) triggers the download.
+# (selectCourse() guards on STATE_LIST_READY).  The delay has to outlast the
+# load_app readiness gate plus activate(), or that click lands just as the
+# response does and fires a download by accident.  After wait_for_list the
+# list is loaded and the second SELECT (select_course) starts the download.
 echo "[e2e] ── Scenario A: download first course ───────────────────────"
 reset_course_store
-start_mock normal 15
+start_mock normal 40
 load_app A
 activate
 enter_widget    # SELECT click while still in STATE_LOADING_LIST — no-op at app level
-wait_for_http   # HTTP response arrives during this sleep; state → LIST_READY
+wait_for_list A
 
 screenshot "01_course_list"
 assert_no_error_triangle "01_course_list" "01: no exception"
 assert_row_selected "01_course_list" 0 1 "row0 is highlighted on initial load"
 
 select_course   # second SELECT click → KEY_ENTER → selectCourse()
-sleep 25
+wait_for_download A
 screenshot "02_downloaded_first"
 assert_no_error_triangle "02_downloaded_first" "02: no exception"
 # The resize from 280x375→246x322 darkens the pure #00FF00 text to ~#00B700 (28%
@@ -806,11 +847,11 @@ assert_course_stored "A: course parsed by the OS and stored as device content"
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario B: scroll attempt, download ───────────────────"
 reset_course_store
-start_mock normal 15
+start_mock normal 40
 load_app B
 activate
 enter_widget
-wait_for_http
+wait_for_list B
 
 scroll Down
 sleep 1
@@ -818,7 +859,7 @@ screenshot "03_course_list_after_down"
 assert_no_error_triangle "03_course_list_after_down" "03: no exception after Down"
 
 select_course
-sleep 25
+wait_for_download B
 screenshot "04_downloaded"
 assert_no_error_triangle "04_downloaded" "04: no exception"
 assert_has_color "04_downloaded" 20 58 180 90 "#00FF00" "download screen shows green text" 200
@@ -828,11 +869,11 @@ assert_course_stored "B: course stored after scroll + select"
 # Scenario C — Server error (HTTP 500)
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario C: server error ────────────────────────────────"
-start_mock error 15
+start_mock error 40
 load_app C
 activate
 enter_widget
-wait_for_http
+wait_for_list C
 screenshot "05_error_state"
 assert_no_error_triangle "05_error_state" "05: no exception"
 assert_has_color "05_error_state" 20 62 180 90 "#FF0000" "error state shows red text"
@@ -841,11 +882,11 @@ assert_has_color "05_error_state" 20 62 180 90 "#FF0000" "error state shows red 
 # Scenario D — Empty course list
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario D: empty courses ───────────────────────────────"
-start_mock empty 15
+start_mock empty 40
 load_app D
 activate
 enter_widget
-wait_for_http
+wait_for_list D
 screenshot "06_empty_courses"
 assert_no_error_triangle "06_empty_courses" "06: no exception"
 assert_has_color "06_empty_courses" 20 62 180 90 "#FF0000" "empty list shows error state with red text"
@@ -856,11 +897,11 @@ assert_has_color "06_empty_courses" 20 62 180 90 "#FF0000" "empty list shows err
 # The test verifies no-crash and that the first page renders correctly.
 # ════════════════════════════════════════════════════════════════════════════
 echo "[e2e] ── Scenario E: multi-page course list (8 courses) ─────────"
-start_mock many 15
+start_mock many 40
 load_app E
 activate
 enter_widget
-wait_for_http
+wait_for_list E
 
 screenshot "07_multipage_p1"
 assert_no_error_triangle "07_multipage_p1" "07: no exception"
@@ -889,13 +930,13 @@ assert_no_error_triangle "08_multipage_after_downs" "08: no exception after 5 Do
 # ── Scenario F — full records (the ?lean=0 fallback) ────────────────────────
 echo "[e2e] ── Scenario F: FIT with full records (17 B/pt) ─────────────"
 reset_course_store
-start_mock full 15
+start_mock full 40
 load_app F
 activate
 enter_widget
-wait_for_http
+wait_for_list F
 select_course
-sleep 25
+wait_for_download F
 screenshot "09_fit_full_records"
 fit_report F
 assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
@@ -906,13 +947,13 @@ dump_course_store
 # ── Scenario G — corrupt FIT (CONTROL) ──────────────────────────────────────
 echo "[e2e] ── Scenario G: corrupt FIT (control) ──────────────────────"
 reset_course_store
-start_mock corrupt 15
+start_mock corrupt 40
 load_app G
 activate
 enter_widget
-wait_for_http
+wait_for_list G
 select_course
-sleep 25
+wait_for_download G
 screenshot "10_fit_corrupt"
 fit_report G
 assert_no_error_triangle "10_fit_corrupt" "10: no exception on corrupt FIT"
