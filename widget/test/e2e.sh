@@ -161,20 +161,19 @@ PYPATCH
 # ── Start CIQ Simulator ──────────────────────────────────────────────────────
 # Redirect simulator stdout so that Monkey C System.println() output is captured.
 #
-# Line-buffer it. The simulator is a native binary, so writing to a file gets
-# libc's 4 KiB block buffering: println output sits in the buffer for an
-# arbitrary time before reaching the log. That is invisible when the log is
-# only read at the end of a run, but anything that *waits* on a log line is
-# then waiting on the buffer rather than on the app, which is how the first
-# attempt at polling deadlocked.
-_SIM_CMD=(simulator)
-if command -v stdbuf >/dev/null 2>&1; then
-    _SIM_CMD=(stdbuf -oL -eL simulator)
-    echo "[e2e] simulator stdout is line-buffered (stdbuf)"
-else
-    echo "[e2e] WARN: stdbuf unavailable — log waits may lag behind the app"
-fi
-DISPLAY=$DISP "${_SIM_CMD[@]}" >"${RESULTS}/simulator.log" 2>&1 &
+# THIS LOG LAGS THE APP BY ROUGHLY A BUFFER'S WORTH OF OUTPUT — around ten
+# seconds in practice, and more early in a run. The simulator buffers its
+# stdout when it is a file, and stdbuf -oL does not change that (measured: the
+# lag was identical with and without it), presumably because the binary does
+# not use libc stdio for this.
+#
+# The consequence is a rule, not a nuisance: never *wait* on a line in this
+# log, and never attribute a line to a scenario in real time. An attempt to
+# poll it for sequencing deadlocked on the buffer, and lines from one
+# scenario surfaced inside the next one's section. Log assertions run at the
+# end of a scenario, by which point the relevant output has flushed;
+# sequencing uses sleeps.
+DISPLAY=$DISP simulator >"${RESULTS}/simulator.log" 2>&1 &
 SIM_PID=$!
 sleep 5   # wait for simulator to be ready
 
@@ -508,7 +507,12 @@ load_app() {
     local prg="test-results/build/app.prg"
     if [ -n "$APP_PID" ]; then
         kill "$APP_PID" 2>/dev/null || true
-        sleep 1
+        # Killing monkeydo does not immediately unload the app from the
+        # simulator, and a lingering instance still answers clicks from its
+        # own state. That is what made one scenario fire a course download
+        # from the previous scenario's loaded list. One second was not enough
+        # once several scenarios had run back to back.
+        sleep 5
     fi
     # Mark scenario boundary in the log so Monkey C println output is easy to attribute.
     printf '\n[e2e] ══ load_app %s ══\n' "${label:-?}" >> "${RESULTS}/simulator.log"
@@ -519,75 +523,11 @@ load_app() {
         >>"${RESULTS}/simulator.log" 2>&1 &
     APP_PID=$!
     echo "[e2e] App loaded (PID=$APP_PID) — Monkey C log → ${RESULTS}/simulator.log"
-
-    # Wait for THIS instance to announce itself before returning.
-    #
-    # Killing monkeydo does not reliably unload the app from the simulator, so
-    # without this a scenario's first click can land on the previous
-    # scenario's app, which is still resident and still in STATE_LIST_READY.
-    # That is exactly what happened to scenario F once: its SELECT fired a
-    # course download three seconds in, using the prior scenario's loaded
-    # list, while its own instance never logged a line.
-    #
-    # The widget prints its base URL at the start of fetchCourseList, so that
-    # line appearing after the boundary marker means the new instance is live.
-    # The course list itself is still in flight (the mock delays it), so the
-    # "click during LOADING" step that follows still does what it says.
-    local waited=0
-    while [ "$waited" -lt 40 ]; do
-        if _scenario_log "${label:-?}" | grep -q "INFO: http"; then
-            echo "[e2e] App ${label:-?} is live after ${waited}s"
-            return
-        fi
-        sleep 1
-        waited=$((waited + 1))
-    done
-    echo "[e2e] WARN: app ${label:-?} never announced itself within ${waited}s —" \
-         "assertions below may be reading a stale instance"
 }
 
-# Poll this scenario's log for a line matching REGEX. Returns 0 on match.
-#
-# Fixed sleeps made scenario outcomes depend on how long the runner happened
-# to take, which is how scenario E once screenshotted the wrong screen: the
-# SELECT that is supposed to be a no-op during LOADING got processed after the
-# course list landed, and fired a download instead.
-_await_log() {
-    local label="$1" pattern="$2" timeout="${3:-90}" what="${4:-$2}"
-    local waited=0
-    while [ "$waited" -lt "$timeout" ]; do
-        if _scenario_log "$label" | grep -qE "$pattern"; then
-            echo "[e2e] $label: $what after ${waited}s"
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
-    done
-    echo "[e2e] WARN: $label: timed out after ${timeout}s waiting for $what"
-    return 1
-}
-
-# Block until the course list request has settled, however it settled.
-wait_for_list() {
-    local label="$1"
-    _await_log "$label" 'Courses loaded|Empty course list|Course list failed' \
-        90 "course list settled" || true
-    # The enter_widget SELECT is meant to be swallowed by the STATE_LIST_READY
-    # guard. If a download went out before any scenario asked for one, that
-    # click raced the response — say so here rather than leaving a later
-    # assertion to fail for a reason that looks unrelated.
-    if _scenario_log "$label" | grep -q 'FIT_REQUEST' 2>/dev/null; then
-        echo "[e2e] WARN: $label: a download fired during list load —" \
-             "the enter_widget click raced the response"
-    fi
-    sleep 2   # let onUpdate repaint before any screenshot
-}
-
-# Block until the FIT response has been handled.
-wait_for_download() {
-    local label="$1"
-    _await_log "$label" 'FIT_RESULT code=' 90 "FIT response" || true
-    sleep 3   # repaint
+wait_for_http() {
+    # Cover the mock's 20 s delay plus the request round-trip and onUpdate.
+    sleep 28
 }
 
 # ── Pixel-level screenshot assertions ────────────────────────────────────────
@@ -825,26 +765,26 @@ assert_course_not_stored() {
 # ════════════════════════════════════════════════════════════════════════════
 # Mock delay (15 s) ensures the HTTP response hasn't arrived yet when
 # enter_widget fires its SELECT click, so KEY_ENTER is a no-op at that point
-# (selectCourse() guards on STATE_LIST_READY).  The delay has to outlast the
-# load_app readiness gate plus activate(), or that click lands just as the
-# response does and fires a download by accident.  It also has to stay under
-# Connect IQ's own request timeout, or the list never arrives at all — 20 s
-# sits between the two.  After wait_for_list the list is loaded and the second
-# SELECT (select_course) starts the download.
+# (selectCourse() guards on STATE_LIST_READY).  The delay must comfortably
+# outlast activate(), or that click lands as the response does and fires a
+# download by accident, while staying under Connect IQ's own request timeout,
+# or the list never arrives at all.  20 s sits between the two.  After
+# wait_for_http the list is loaded and the second SELECT (select_course)
+# starts the download.
 echo "[e2e] ── Scenario A: download first course ───────────────────────"
 reset_course_store
 start_mock normal 20
 load_app A
 activate
 enter_widget    # SELECT click while still in STATE_LOADING_LIST — no-op at app level
-wait_for_list A
+wait_for_http
 
 screenshot "01_course_list"
 assert_no_error_triangle "01_course_list" "01: no exception"
 assert_row_selected "01_course_list" 0 1 "row0 is highlighted on initial load"
 
 select_course   # second SELECT click → KEY_ENTER → selectCourse()
-wait_for_download A
+sleep 25
 screenshot "02_downloaded_first"
 assert_no_error_triangle "02_downloaded_first" "02: no exception"
 # The resize from 280x375→246x322 darkens the pure #00FF00 text to ~#00B700 (28%
@@ -867,7 +807,7 @@ start_mock normal 20
 load_app B
 activate
 enter_widget
-wait_for_list B
+wait_for_http
 
 scroll Down
 sleep 1
@@ -875,7 +815,7 @@ screenshot "03_course_list_after_down"
 assert_no_error_triangle "03_course_list_after_down" "03: no exception after Down"
 
 select_course
-wait_for_download B
+sleep 25
 screenshot "04_downloaded"
 assert_no_error_triangle "04_downloaded" "04: no exception"
 assert_has_color "04_downloaded" 20 58 180 90 "#00FF00" "download screen shows green text" 200
@@ -889,7 +829,7 @@ start_mock error 20
 load_app C
 activate
 enter_widget
-wait_for_list C
+wait_for_http
 screenshot "05_error_state"
 assert_no_error_triangle "05_error_state" "05: no exception"
 assert_has_color "05_error_state" 20 62 180 90 "#FF0000" "error state shows red text"
@@ -902,7 +842,7 @@ start_mock empty 20
 load_app D
 activate
 enter_widget
-wait_for_list D
+wait_for_http
 screenshot "06_empty_courses"
 assert_no_error_triangle "06_empty_courses" "06: no exception"
 assert_has_color "06_empty_courses" 20 62 180 90 "#FF0000" "empty list shows error state with red text"
@@ -917,7 +857,7 @@ start_mock many 20
 load_app E
 activate
 enter_widget
-wait_for_list E
+wait_for_http
 
 screenshot "07_multipage_p1"
 assert_no_error_triangle "07_multipage_p1" "07: no exception"
@@ -950,9 +890,9 @@ start_mock full 20
 load_app F
 activate
 enter_widget
-wait_for_list F
+wait_for_http
 select_course
-wait_for_download F
+sleep 25
 screenshot "09_fit_full_records"
 fit_report F
 assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
@@ -967,9 +907,9 @@ start_mock corrupt 20
 load_app G
 activate
 enter_widget
-wait_for_list G
+wait_for_http
 select_course
-wait_for_download G
+sleep 25
 screenshot "10_fit_corrupt"
 fit_report G
 assert_no_error_triangle "10_fit_corrupt" "10: no exception on corrupt FIT"
