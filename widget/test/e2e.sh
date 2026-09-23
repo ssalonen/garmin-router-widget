@@ -215,8 +215,8 @@ activate() {
         sleep 12
         _SIM_WARMED_UP=true
     else
-        echo "[e2e] Subsequent activate — waiting 3 s for app reload"
-        sleep 3
+        echo "[e2e] Subsequent activate — waiting 6 s for app reload"
+        sleep 6
     fi
 
     # Discover the canvas viewport window (used for screenshot cropping only).
@@ -522,8 +522,12 @@ load_app() {
         # simulator, and a lingering instance still answers clicks from its
         # own state. That is what made one scenario fire a course download
         # from the previous scenario's loaded list. One second was not enough
-        # once several scenarios had run back to back.
-        sleep 5
+        # once several scenarios had run back to back; 5s still was not
+        # enough by scenarios F/G (6th/7th reload) in CI — the mock log
+        # showed no /api/courses request at all for those scenarios, proving
+        # the "new" app never actually loaded and the stale instance replayed
+        # the previous scenario's cached course list instead.
+        sleep 8
     fi
     # Mark scenario boundary in the log so Monkey C println output is easy to attribute.
     printf '\n[e2e] ══ load_app %s ══\n' "${label:-?}" >> "${RESULTS}/simulator.log"
@@ -903,6 +907,12 @@ sleep 25
 screenshot "09_fit_full_records"
 fit_report F
 assert_no_error_triangle "09_fit_full_records" "09: no exception on full-record FIT"
+# A stale app instance (previous scenario's, never actually reloaded) skips
+# this request entirely and replays its old cached course list instead — the
+# bug that produced the exception triangle above before load_app's settle
+# times were extended. Assert it directly so a recurrence reads as "stale
+# app" rather than an opaque crash.
+assert_mock_served 'GET /api/courses' "F: widget (re)requested the course list — not a stale app instance"
 assert_mock_served 'mode=full bytes=' "F: full-record FIT served to the widget"
 assert_course_stored "F: full-record FIT stored — the ?lean=0 fallback works"
 dump_course_store
@@ -920,6 +930,7 @@ sleep 25
 screenshot "10_fit_corrupt"
 fit_report G
 assert_no_error_triangle "10_fit_corrupt" "10: no exception on corrupt FIT"
+assert_mock_served 'GET /api/courses' "G: widget (re)requested the course list — not a stale app instance"
 assert_course_not_stored "G: corrupt FIT rejected — proves the device parses the body"
 dump_course_store
 
