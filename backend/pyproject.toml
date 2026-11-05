@@ -3,18 +3,18 @@ name = "garmin-router-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.149.0",
+    "fastapi>=0.162.0",
     "uvicorn[standard]>=0.54.0",
-    "garminconnect>=0.3.19",
+    "garminconnect>=0.3.20",
     "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     # Transport for starlette's TestClient. Starlette >=1.6 deprecates httpx 0.x
     # here in favour of httpx2.
-    "httpx2>=2.15.1",
+    "httpx2>=2.16.0",
     "pytest-mock>=3.17.0",
 ]
 
